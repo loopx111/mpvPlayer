@@ -1,0 +1,24 @@
+2026-01-13 16:58:29,679 [INFO] mpv - Play requirements.txt
+2026-01-13 16:58:29,747 [WARNING] mqtt - Subscribe called while disconnected, will retry after connect
+2026-01-13 16:58:29,748 [WARNING] mqtt - Subscribe called while disconnected, will retry after connect
+2026-01-13 16:58:29,748 [WARNING] mqtt - Subscribe called while disconnected, will retry after connect
+2026-01-13 17:02:59,709 [INFO] mpv - Play requirements.txt
+2026-01-13 17:02:59,720 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-13 17:04:46,914 [INFO] mpv - Play requirements.txt
+2026-01-13 17:04:46,923 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-13 17:06:07,632 [WARNING] mpv - 在目录  中未找到视频文件
+2026-01-13 17:06:07,645 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-13 17:07:54,271 [WARNING] mpv - 在目录  中未找到视频文件
+2026-01-13 17:07:54,272 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-13 17:08:17,012 [WARNING] mpv - 在目录  中未找到视频文件
+2026-01-13 17:08:17,013 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-13 17:09:36,981 [WARNING] mpv - 在目录  中未找到视频文件
+2026-01-13 17:09:36,982 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-14 09:53:41,440 [INFO] mpv - 找到 1 个视频文件，开始播放: ma.mp4
+2026-01-14 09:53:41,442 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-14 09:53:42,442 [INFO] mpv - Play D:\soft\mpv\ma.mp4
+2026-01-14 09:53:43,745 [INFO] mpv - MPV 进程已启动，PID: 7580
+2026-01-14 09:54:22,542 [INFO] mpv - 找到 1 个视频文件，开始播放: ma.mp4
+2026-01-14 09:54:22,542 [INFO] mqtt.service - MQTT 服务已禁用，跳过连接
+2026-01-14 09:54:23,556 [INFO] mpv - Play D:\soft\mpv\ma.mp4
+2026-01-14 09:54:23,556 [INFO] mpv - MPV 进程已启动，PID: 15860

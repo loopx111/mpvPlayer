@@ -1,0 +1,44 @@
+{
+  "mqtt": {
+    "host": "127.0.0.1",
+    "port": 1883,
+    "clientId": "mpv-player",
+    "username": "",
+    "password": "",
+    "keepalive": 60,
+    "cleanSession": true,
+    "enabled": false,
+    "devicePath": "设备/默认",
+    "statusReportInterval": 30000,
+    "heartbeatInterval": 15000
+  },
+  "download": {
+    "path": "D:\\code\\mpvPlayer\\data\\downloads",
+    "maxConcurrent": 3,
+    "retryLimit": 3,
+    "retryBackoff": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      30
+    ],
+    "extractDefault": false
+  },
+  "player": {
+    "videoPath": "D:\\soft\\mpv",
+    "autoPlay": true,
+    "loop": true,
+    "showControls": true,
+    "volume": 70,
+    "preloadNext": false
+  },
+  "system": {
+    "devicePath": "设备/默认",
+    "enableAutoRestart": false,
+    "logLevel": "INFO",
+    "logPath": "",
+    "autostart": false
+  }
+}
