@@ -2,18 +2,18 @@
   "mqtt": {
     "host": "127.0.0.1",
     "port": 1883,
-    "clientId": "mpv-player",
+    "clientId": "mpv-player-kylin",
     "username": "",
     "password": "",
     "keepalive": 60,
     "cleanSession": true,
-    "enabled": true,
-    "devicePath": "设备/默认",
+    "enabled": false,
+    "devicePath": "设备/麒麟系统",
     "statusReportInterval": 30000,
     "heartbeatInterval": 15000
   },
   "download": {
-    "path": "D:\\code\\mpvPlayer\\data\\downloads",
+    "path": "/opt/mpvPlayer/data/downloads",
     "maxConcurrent": 3,
     "retryLimit": 3,
     "retryBackoff": [
@@ -27,7 +27,7 @@
     "extractDefault": false
   },
   "player": {
-    "videoPath": "D:\\soft\\mpv",
+    "videoPath": "/opt/mpvPlayer/videos",
     "autoPlay": true,
     "loop": true,
     "showControls": true,
@@ -35,10 +35,10 @@
     "preloadNext": false
   },
   "system": {
-    "devicePath": "设备/默认",
+    "devicePath": "设备/麒麟系统",
     "enableAutoRestart": false,
     "logLevel": "INFO",
-    "logPath": "",
+    "logPath": "/var/log/mpvPlayer",
     "autostart": false
   }
 }

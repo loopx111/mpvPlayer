@@ -7,7 +7,7 @@ from ..utils.checksum import verify_checksum
 
 
 class DownloadResult:
-    def __init__(self, path: Path, success: bool, reason: str | None = None):
+    def __init__(self, path: Path, success: bool, reason: Optional[str] = None):
         self.path = path
         self.success = success
         self.reason = reason
@@ -18,7 +18,7 @@ class Downloader:
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self.log = get_logger("downloader")
 
-    async def fetch(self, url: str, dest: Path, checksum: str | None = None, checksum_type: str = "md5", headers: Optional[dict] = None) -> DownloadResult:
+    async def fetch(self, url: str, dest: Path, checksum: Optional[str] = None, checksum_type: str = "md5", headers: Optional[dict] = None) -> DownloadResult:
         async with self.semaphore:
             tmp = dest.with_suffix(dest.suffix + ".part")
             try:

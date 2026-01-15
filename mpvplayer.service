@@ -1,0 +1,16 @@
+[Unit]
+Description=MPV Player Service
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=/opt/mpvPlayer
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/$USER/.Xauthority
+ExecStart=/opt/mpvPlayer/venv/bin/python -m src.app
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

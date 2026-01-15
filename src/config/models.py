@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass
@@ -22,7 +22,7 @@ class DownloadConfig:
     path: str = ""
     maxConcurrent: int = 3
     retryLimit: int = 3
-    retryBackoff: list[int] = field(default_factory=lambda: [1, 2, 4, 8, 16, 30])
+    retryBackoff: List[int] = field(default_factory=lambda: [1, 2, 4, 8, 16, 30])
     extractDefault: bool = False
 
 

@@ -21,33 +21,65 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual Environment
-.venv/
-venv/
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.env
+.venv
 env/
+venv/
 ENV/
+env.bak/
+venv.bak/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Project specific
-.codebuddy/
-data/downloads/
-logs/
+# Logs
 *.log
+logs/
 
-# Configuration files with sensitive data
-.env
-.env.local
-.env.production
+# Data files (optional - include if you want to track them)
+# data/
 
 # Temporary files
 *.tmp
 *.temp
+
+# Archive files
+*.tar
+*.gz
+*.zip
+*.rar
+
+# Application specific
+data/logs/
+data/downloads/
+data/videos/

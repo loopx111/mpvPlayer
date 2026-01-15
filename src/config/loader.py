@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, Optional
 from .models import AppConfig, MqttConfig, DownloadConfig, PlayerConfig, SystemConfig
 from ..utils.paths import config_path, downloads_dir
 
 
-def _dict_to_config(data: dict[str, Any]) -> AppConfig:
+def _dict_to_config(data: Dict[str, Any]) -> AppConfig:
     mqtt = data.get("mqtt", {})
     download = data.get("download", {})
     player = data.get("player", {})
@@ -23,7 +23,7 @@ def _dict_to_config(data: dict[str, Any]) -> AppConfig:
     return cfg
 
 
-def load_config(path: Path | None = None) -> AppConfig:
+def load_config(path: Optional[Path] = None) -> AppConfig:
     cfg_path = path or config_path()
     if not cfg_path.exists():
         cfg = AppConfig()
@@ -41,7 +41,7 @@ def load_config(path: Path | None = None) -> AppConfig:
         return cfg
 
 
-def save_config(cfg: AppConfig, path: Path | None = None) -> None:
+def save_config(cfg: AppConfig, path: Optional[Path] = None) -> None:
     cfg.clamp()
     cfg_path = path or config_path()
     cfg_path.parent.mkdir(parents=True, exist_ok=True)

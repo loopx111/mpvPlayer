@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 
 
 def project_root() -> Path:
@@ -23,7 +24,7 @@ def logs_dir() -> Path:
     return path
 
 
-def downloads_dir(default: str | None = None) -> Path:
+def downloads_dir(default: Optional[str] = None) -> Path:
     if default:
         path = Path(default)
     else:

@@ -7,7 +7,7 @@ from .downloader import Downloader, DownloadResult
 
 
 class DownloadTask:
-    def __init__(self, task_id: str, url: str, dest: Path, checksum: str | None, checksum_type: str, extract: bool):
+    def __init__(self, task_id: str, url: str, dest: Path, checksum: Optional[str], checksum_type: str, extract: bool):
         self.task_id = task_id
         self.url = url
         self.dest = dest
