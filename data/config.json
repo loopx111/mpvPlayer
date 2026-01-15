@@ -1,14 +1,14 @@
 {
   "mqtt": {
-    "host": "127.0.0.1",
+    "host": "192.168.30.55",
     "port": 1883,
-    "clientId": "mpv-player",
-    "username": "",
-    "password": "",
+    "clientId": "mpv-player-001",
+    "username": "baicells",
+    "password": "BlTf129",
     "keepalive": 60,
     "cleanSession": true,
     "enabled": true,
-    "devicePath": "设备/默认",
+    "devicePath": "设备/区域/南京/鼓楼",
     "statusReportInterval": 30000,
     "heartbeatInterval": 15000
   },

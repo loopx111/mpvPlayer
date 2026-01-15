@@ -6,7 +6,7 @@
 echo "正在安装MPV Player依赖包..."
 
 # 检查系统类型
-if [ ! -f /etc/kylin-release ]; then
+if [ ! -f /etc/kylin-version ]; then
     echo "警告: 这可能不是Kylin系统，但会继续安装依赖"
 fi
 

@@ -1,14 +1,14 @@
 {
   "mqtt": {
-    "host": "127.0.0.1",
+    "host": "192.168.3.55",
     "port": 1883,
-    "clientId": "mpv-player-kylin",
-    "username": "",
-    "password": "",
+    "clientId": "kylin_001",
+    "username": "baicells",
+    "password": "BlTf129",
     "keepalive": 60,
     "cleanSession": true,
-    "enabled": false,
-    "devicePath": "设备/麒麟系统",
+    "enabled": true,
+    "devicePath": "设备/区域/南京/鼓楼",
     "statusReportInterval": 30000,
     "heartbeatInterval": 15000
   },
@@ -27,7 +27,7 @@
     "extractDefault": false
   },
   "player": {
-    "videoPath": "/opt/mpvPlayer/videos",
+    "videoPath": "/opt/mpvPlayer/data/videos",
     "autoPlay": true,
     "loop": true,
     "showControls": true,

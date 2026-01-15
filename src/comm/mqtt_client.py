@@ -30,6 +30,7 @@ class MqttClient:
         self._running = True
         self._network_thread = None
         self._reconnect_thread = None
+        self.on_connect_success: Optional[Callable] = None  # 连接成功回调
 
     def connect(self) -> None:
         """连接MQTT服务器，支持自动重连"""
@@ -56,8 +57,12 @@ class MqttClient:
         def network_loop():
             while self._running:
                 try:
+                    self.log.info(f"尝试连接MQTT服务器: {self.cfg.host}:{self.cfg.port}")
                     self.client.connect(self.cfg.host, self.cfg.port, keepalive=self.cfg.keepalive)
                     self.client.loop_forever()
+                except ConnectionRefusedError:
+                    self.log.error("MQTT连接被拒绝，请检查MQTT服务器是否运行")
+                    time.sleep(5)  # 延长等待时间
                 except Exception as e:
                     self.log.error("MQTT网络线程异常: %s", e)
                     if self._running:
@@ -149,6 +154,13 @@ class MqttClient:
             
             # 发送缓存的消息
             self._flush_message_queue()
+            
+            # 调用连接成功回调
+            if self.on_connect_success:
+                try:
+                    self.on_connect_success()
+                except Exception as e:
+                    self.log.error("连接成功回调执行失败: %s", e)
             
         else:
             self.connected = False

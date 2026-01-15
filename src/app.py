@@ -260,7 +260,7 @@ class ApplicationManager:
         if self.player:
             self.player.cleanup()
         if self.mqtt_service:
-            self.mqtt_service.client.disconnect()
+            self.mqtt_service.stop()
 
 
 def main() -> None:
