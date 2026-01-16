@@ -4,6 +4,7 @@ import subprocess
 import platform
 import queue
 import time
+import glob
 from pathlib import Path
 from typing import Optional, List
 from ..utils.logger import get_logger
@@ -42,10 +43,19 @@ class MpvController:
         
         # 延迟初始化播放列表
         threading.Thread(target=self._init_playlist, args=(video_path,), daemon=True).start()
+        
+        # 播放列表文件路径
+        self.playlist_file = None
+        self.use_playlist_mode = False  # 是否使用播放列表模式
+        
+        # 支持的视频格式
+        self.supported_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
 
     def _init_playlist(self, video_path: str) -> None:
         """在后台线程中初始化播放列表"""
-        self.set_playlist_dir(video_path)
+        # 所有系统都支持播放列表模式
+        use_playlist_mode = True
+        self.set_playlist_dir(video_path, use_playlist_mode)
 
     def _command_worker(self) -> None:
         """命令处理工作线程"""
@@ -58,13 +68,13 @@ class MpvController:
                     else:
                         self.log.error("未知命令: %s", command)
                 except Exception as e:
-                    self.log.error("执行命令 %s 时出错: %s", command, e)
+                    self.log.error(f"执行命令 {command} 时出错: {e}")
                 finally:
                     self._command_queue.task_done()
             except queue.Empty:
                 continue
             except Exception as e:
-                self.log.error("命令工作线程异常: %s", e)
+                self.log.error(f"命令工作线程异常: {e}")
                 time.sleep(0.1)
     
     def _monitor_playback(self) -> None:
@@ -78,7 +88,7 @@ class MpvController:
                     self._check_playback_status()
                 time.sleep(1)
             except Exception as e:
-                self.log.error("播放状态监测异常: %s", e)
+                self.log.error(f"播放状态监测异常: {e}")
                 time.sleep(2)
     
     def _check_playback_status(self) -> None:
@@ -114,40 +124,80 @@ class MpvController:
         except queue.Full:
             self.log.warning("命令队列已满，丢弃命令: %s", command)
 
-    def set_playlist_dir(self, path: str) -> None:
-        """设置播放目录，在后台线程中执行"""
+    def set_playlist_dir(self, path: str, use_playlist_mode: bool = False) -> None:
+        """设置播放目录，在后台线程中执行
+        
+        Args:
+            path: 视频目录路径
+            use_playlist_mode: 是否使用播放列表文件模式（推荐在麒麟系统上使用）
+        """
         def _set_playlist_internal():
             dir_path = Path(path)
             if dir_path.is_dir():
-                # 递归搜索所有 mp4 文件
-                mp4_files = []
-                for root, dirs, files in os.walk(dir_path):
-                    for file in files:
-                        if file.lower().endswith('.mp4'):
-                            mp4_files.append(Path(root) / file)
+                # 搜索所有支持的视频文件
+                video_files = self._find_video_files(dir_path)
                 
                 # 按文件名排序
-                mp4_files.sort()
+                video_files.sort()
                 
                 with self._lock:
-                    self.queue = mp4_files
+                    self.queue = video_files
+                    self.use_playlist_mode = use_playlist_mode
                 
                 if self.queue:
-                    self.log.info(f"在 {path} 目录下找到 {len(self.queue)} 个 mp4 文件")
+                    self.log.info(f"在 {path} 目录下找到 {len(self.queue)} 个视频文件")
                     for i, file_path in enumerate(self.queue[:5]):  # 只显示前5个文件
                         self.log.info(f"  {i+1}. {file_path.name}")
                     if len(self.queue) > 5:
                         self.log.info(f"  ... 还有 {len(self.queue) - 5} 个文件")
                     
+                    # 如果使用播放列表模式，创建播放列表文件
+                    if use_playlist_mode:
+                        self._create_playlist_file()
+                    
                     # 延迟启动播放器
                     time.sleep(1)  # 等待 1 秒让 UI 完全加载
                     self._queue_command("_play_internal", self.queue[0])
                 else:
-                    self.log.warning("在目录 %s 中未找到 mp4 文件", path)
+                    self.log.warning("在目录 %s 中未找到视频文件", path)
+                    self.log.warning("支持的格式: %s", ", ".join(self.supported_formats))
             else:
                 self.log.error("目录不存在: %s", path)
         
         threading.Thread(target=_set_playlist_internal, daemon=True).start()
+    
+    def _find_video_files(self, dir_path: Path) -> List[Path]:
+        """搜索视频文件"""
+        video_files = []
+        
+        # 递归搜索所有支持的视频文件
+        for root, dirs, files in os.walk(dir_path):
+            for file in files:
+                file_ext = Path(file).suffix.lower()
+                if file_ext in self.supported_formats:
+                    video_files.append(Path(root) / file)
+        
+        return video_files
+    
+    def _create_playlist_file(self) -> None:
+        """创建播放列表文件"""
+        try:
+            # 在项目data目录下创建播放列表文件
+            playlist_dir = Path("/opt/mpvPlayer/data") if platform.system().lower() == "linux" else Path(__file__).parent.parent.parent / "data"
+            playlist_dir.mkdir(parents=True, exist_ok=True)
+            
+            self.playlist_file = playlist_dir / "playlist.txt"
+            
+            with open(self.playlist_file, 'w', encoding='utf-8') as f:
+                for video_file in self.queue:
+                    f.write(str(video_file) + '\n')
+            
+            self.log.info(f"播放列表文件已创建: {self.playlist_file}")
+            self.log.info(f"播放列表包含 {len(self.queue)} 个视频文件")
+            
+        except Exception as e:
+            self.log.error(f"创建播放列表文件失败: {e}")
+            self.use_playlist_mode = False  # 回退到单文件播放模式
 
     def play(self, file: Path) -> None:
         """播放文件（异步）"""
@@ -196,13 +246,8 @@ class MpvController:
         # 停止当前播放
         self._stop_current_playback()
         
-        # 构建基础 mpv 命令
-        cmd = [
-            self.mpv_exe,
-            file.as_posix(),  # 播放单个文件
-            f"--volume={self.volume}",
-            "--no-terminal"
-        ]
+        # 构建 mpv 命令
+        cmd = [self.mpv_exe]
         
         # 检测是否在无头模式中运行
         is_headless = self._is_headless_mode()
@@ -211,36 +256,22 @@ class MpvController:
             self.log.info("检测到无头模式，调整 MPV 参数")
             # 无头模式下的参数
             cmd.extend([
+                file.as_posix(),  # 播放单个文件
+                f"--volume={self.volume}",
+                "--no-terminal",
                 "--vo=null",  # 无视频输出
                 "--ao=null",  # 无音频输出
                 "--no-video"  # 不加载视频
             ])
-        elif platform.system().lower() != "windows":
-            # Linux环境的参数（使用你提供的测试参数）
-            cmd.extend([
-                "--keep-open=no",  # 播放完成后不保持窗口
-                "--force-window=yes",  # 强制创建窗口
-                "--fullscreen",  # 全屏模式
-                "--no-terminal",  # 无控制台
-                "--hwdec=auto",  # 使用自动硬件解码
-                "--cursor-autohide=3000",  # 3秒后自动隐藏鼠标光标
-                "--input-default-bindings=yes"  # 启用默认键绑定
-            ])
         else:
-            # Windows环境的参数（保持与Linux参数一致）
-            cmd.extend([
-                "--keep-open=no",  # 播放完成后不保持窗口
-                "--force-window=yes",  # 强制创建窗口
-                "--fullscreen",  # 全屏模式
-                "--no-terminal",  # 无控制台
-                "--hwdec=auto",  # 使用自动硬件解码
-                "--cursor-autohide=3000",  # 3秒后自动隐藏鼠标光标
-                "--input-default-bindings=yes"  # 启用默认键绑定
-            ])
-        
-            # 添加文件循环设置
-            if self.loop:
-                cmd.append("--loop-file=inf")  # 无限循环单个文件
+            # 使用播放列表模式（麒麟系统推荐）
+            if self.use_playlist_mode and self.playlist_file and self.playlist_file.exists():
+                self.log.info("使用播放列表模式进行播放")
+                cmd.extend(self._build_playlist_command())
+            else:
+                # 单文件播放模式
+                self.log.info("使用单文件播放模式")
+                cmd.extend(self._build_single_file_command(file))
         
         self.log.info(f"启动 MPV 命令: {' '.join(cmd)}")
         
@@ -261,7 +292,7 @@ class MpvController:
             self.current_process = process
             self.log.info(f"MPV 进程已启动，PID: {process.pid}")
         except Exception as e:
-            self.log.error("启动 MPV 失败: %s", e)
+            self.log.error(f"启动 MPV 失败: {e}")
             # 尝试不使用特殊标志
             try:
                 process = subprocess.Popen(cmd)
@@ -269,6 +300,37 @@ class MpvController:
                 self.log.info(f"MPV 进程已启动（不使用特殊标志），PID: {process.pid}")
             except Exception as e2:
                 self.log.error("第二次启动 MPV 失败: %s", e2)
+    
+    def _build_playlist_command(self) -> List[str]:
+        """构建播放列表模式的mpv命令"""
+        cmd = [
+            f"--playlist={self.playlist_file}",
+            "--loop-playlist=inf",
+            f"--volume={self.volume}",
+            "--keep-open=no",
+            "--fullscreen",
+            "--cursor-autohide=3000",
+            "--input-default-bindings=yes"
+        ]
+        
+        return cmd
+    
+    def _build_single_file_command(self, file: Path) -> List[str]:
+        """构建单文件播放模式的mpv命令"""
+        cmd = [
+            file.as_posix(),  # 播放单个文件
+            f"--volume={self.volume}",
+            "--keep-open=no",
+            "--fullscreen",
+            f"--cursor-autohide={3000}",
+            "--input-default-bindings=yes"
+        ]
+        
+        # 添加循环设置
+        if self.loop:
+            cmd.append("--loop-file=inf")
+        
+        return cmd
 
     def _stop_current_playback(self) -> None:
         """停止当前播放（在命令工作线程中执行）"""
