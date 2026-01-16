@@ -98,6 +98,14 @@ class MpvController:
                 self.log.info("检测到播放完成，自动播放下一个文件")
                 self._queue_command("_auto_play_next")
             return
+            
+        # 如果进程还在运行，尝试通过IPC检测播放状态
+        try:
+            # 这里可以添加IPC检测逻辑，但目前先保持简单
+            # 后续可以优化为通过IPC检测播放状态
+            pass
+        except Exception as e:
+            self.log.debug(f"IPC状态检测失败: {e}")
 
     def _queue_command(self, command: str, *args, **kwargs) -> None:
         """将命令加入队列"""
@@ -172,74 +180,7 @@ class MpvController:
             
         return False
 
-    def _is_remote_environment(self) -> bool:
-        """检测是否在远程环境中运行"""
-        import os
-        import platform
-        
-        # 检查是否通过命令行参数强制启用远程模式
-        if os.environ.get("MPV_REMOTE_MODE") == "true":
-            return True
-            
-        # Windows系统远程桌面检测
-        if platform.system().lower() == "windows":
-            # 检查远程桌面会话
-            try:
-                import subprocess
-                # 查询当前会话类型
-                result = subprocess.run(["query", "session"], capture_output=True, text=True, timeout=2)
-                if result.returncode == 0 and "rdp" in result.stdout.lower():
-                    return True
-                
-                # 检查远程桌面服务是否运行
-                result = subprocess.run(["sc", "query", "TermService"], capture_output=True, text=True, timeout=2)
-                if result.returncode == 0 and "RUNNING" in result.stdout:
-                    return True
-            except:
-                pass
-        
-        # Linux系统远程检测
-        elif platform.system().lower() == "linux":
-            # 检查SSH连接
-            if os.environ.get("SSH_CONNECTION"):
-                return True
-                
-            # 检查远程桌面环境变量
-            remote_env_vars = ["SSH_TTY", "REMOTEHOST", "TERM", "XDG_SESSION_TYPE", "SSH_CLIENT", "SSH_AUTH_SOCK"]
-            for var in remote_env_vars:
-                if os.environ.get(var):
-                    # 检查TERM是否为xterm或screen（远程终端）
-                    if var == "TERM" and os.environ[var] in ["xterm", "screen", "linux", "xterm-256color"]:
-                        return True
-                    # 检查是否为远程会话
-                    if var == "XDG_SESSION_TYPE" and os.environ[var] in ["tty", "x11"]:
-                        return True
-                    # SSH相关的环境变量
-                    if var in ["SSH_CLIENT", "SSH_AUTH_SOCK"]:
-                        return True
-                    return True
-            
-            # 检查当前用户是否通过SSH登录
-            try:
-                import subprocess
-                result = subprocess.run(["who", "am", "i"], capture_output=True, text=True, timeout=2)
-                if result.returncode == 0 and "pts" in result.stdout:
-                    return True
-            except:
-                pass
-                
-            # 检查是否在远程桌面环境中（xrdp、VNC等）
-            try:
-                # 检查是否有远程桌面进程
-                remote_procs = ["xrdp", "vncserver", "x11vnc", "tigervnc"]
-                for proc in remote_procs:
-                    result = subprocess.run(["pgrep", proc], capture_output=True, text=True, timeout=2)
-                    if result.returncode == 0:
-                        return True
-            except:
-                pass
-                
-        return False
+    # 删除远程环境检测功能，因为远程播放已无问题
 
     def _play_internal(self, file: Path) -> None:
         """内部播放实现（在命令工作线程中执行）"""
@@ -258,19 +199,13 @@ class MpvController:
         # 构建基础 mpv 命令
         cmd = [
             self.mpv_exe,
-            file.as_posix(),
+            file.as_posix(),  # 播放单个文件
             f"--volume={self.volume}",
-            "--no-terminal",
-            "--keep-open=no"  # 播放完成后自动关闭，触发自动播放下一个文件
+            "--no-terminal"
         ]
         
         # 检测是否在无头模式中运行
         is_headless = self._is_headless_mode()
-        
-        # 检测远程环境（仅Windows系统进行检测）
-        is_remote = False
-        if platform.system().lower() == "windows":
-            is_remote = self._is_remote_environment()
         
         if is_headless:
             self.log.info("检测到无头模式，调整 MPV 参数")
@@ -280,44 +215,32 @@ class MpvController:
                 "--ao=null",  # 无音频输出
                 "--no-video"  # 不加载视频
             ])
-        elif is_remote:
-            self.log.info("检测到远程环境，使用优化的远程播放参数")
-            # Windows远程桌面优化参数
-            cmd.extend([
-                "--force-window=immediate",  # 立即显示窗口
-                "--geometry=50%x50%+100+100",  # 小窗口播放
-                "--hwdec=no",  # 禁用硬件解码，减少资源占用
-                "--no-fullscreen",  # 禁用全屏模式
-                "--ontop",  # 窗口置顶
-                "--border=no",  # 无边框
-                "--autofit=50%",  # 自动适应窗口大小
-                "--no-input-default-bindings",  # 禁用默认键绑定
-                "--input-cursor=no",  # 禁用鼠标输入
-                "--cursor-autohide=no",  # 禁用鼠标自动隐藏
-                "--loop-file=no",  # 禁用文件循环
-                "--framedrop=yes",  # 允许丢帧，减少延迟
-                "--demuxer-max-bytes=1M",  # 限制解复用器缓存
-                "--cache=no",  # 禁用缓存
-                "--profile=low-latency",  # 低延迟模式
-                "--gpu-api=win7"  # 使用兼容性更好的GPU API
-            ])
         elif platform.system().lower() != "windows":
-            # Linux环境的参数（直接使用本地播放参数）
+            # Linux环境的参数（使用你提供的测试参数）
             cmd.extend([
-                "--force-window=immediate",  # 立即显示窗口
-                "--geometry=800x600+100+100",  # 设置窗口大小和位置
-                "--input-ipc-server=/tmp/mpv-socket",  # 启用IPC通信
-                "--input-file=/dev/stdin"  # 允许通过stdin输入
+                "--keep-open=no",  # 播放完成后不保持窗口
+                "--force-window=yes",  # 强制创建窗口
+                "--fullscreen",  # 全屏模式
+                "--no-terminal",  # 无控制台
+                "--hwdec=auto",  # 使用自动硬件解码
+                "--cursor-autohide=3000",  # 3秒后自动隐藏鼠标光标
+                "--input-default-bindings=yes"  # 启用默认键绑定
             ])
         else:
-            # 本地Windows环境的参数
+            # Windows环境的参数（保持与Linux参数一致）
             cmd.extend([
-                "--force-window=immediate",  # 立即显示窗口
-                "--geometry=800x600+100+100"  # 设置窗口大小和位置
+                "--keep-open=no",  # 播放完成后不保持窗口
+                "--force-window=yes",  # 强制创建窗口
+                "--fullscreen",  # 全屏模式
+                "--no-terminal",  # 无控制台
+                "--hwdec=auto",  # 使用自动硬件解码
+                "--cursor-autohide=3000",  # 3秒后自动隐藏鼠标光标
+                "--input-default-bindings=yes"  # 启用默认键绑定
             ])
         
-            # 移除文件循环设置，因为我们通过播放列表来实现循环
-            # 单个文件播放完成后会自动关闭，触发自动播放下一个文件
+            # 添加文件循环设置
+            if self.loop:
+                cmd.append("--loop-file=inf")  # 无限循环单个文件
         
         self.log.info(f"启动 MPV 命令: {' '.join(cmd)}")
         
@@ -326,10 +249,10 @@ class MpvController:
             self.log.info("启动 MPV 进程")
             # 根据操作系统选择不同的启动方式
             if platform.system().lower() == "windows":
-                # Windows系统使用CREATE_NEW_CONSOLE
+                # Windows系统使用CREATE_NO_WINDOW避免控制台窗口
                 process = subprocess.Popen(
                     cmd, 
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                    creationflags=subprocess.CREATE_NO_WINDOW
                 )
             else:
                 # Linux/Unix系统不使用特殊标志
@@ -440,28 +363,15 @@ class MpvController:
     
     def _auto_play_next(self) -> None:
         """自动播放下一个文件（用于播放完成后的自动切换）"""
-        with self._lock:
-            if not self.queue:
-                self.log.warning("播放队列为空，无法自动播放下一个文件")
-                return
+        if not self.queue:
+            return
             
-            # 计算下一个文件的索引
-            next_index = self.current_file_index + 1
-            
-            if next_index < len(self.queue):
-                nxt = self.queue[next_index]
-                self.log.info(f"自动播放下一个文件: {nxt.name} (索引: {next_index})")
-            elif self.loop and self.queue:
-                nxt = self.queue[0]
-                self.log.info("播放队列结束，循环到第一首: %s", nxt.name)
-                next_index = 0
-            else:
-                self.log.info("播放队列结束，没有更多文件")
-                return
+        # 计算下一个文件的索引
+        next_index = (self.current_file_index + 1) % len(self.queue)
         
-        # 更新当前文件索引并播放下一首
-        self.current_file_index = next_index
-        self._play_internal(nxt)
+        # 播放下一个文件
+        self.log.info(f"自动切换到下一个文件: {self.queue[next_index].name}")
+        self._play_internal(self.queue[next_index])
 
     def stop_play(self) -> None:
         """停止播放（异步）"""
