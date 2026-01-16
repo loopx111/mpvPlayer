@@ -64,10 +64,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.play_status = QtWidgets.QLabel("未播放")
         self.play_status.setStyleSheet("color: orange; font-weight: bold;")
         self.queue_count = QtWidgets.QLabel("0")
+        self.loop_status = QtWidgets.QLabel("关闭")
+        self.loop_status.setStyleSheet("color: green; font-weight: bold;")
         
         play_layout.addRow("当前文件:", self.current_file)
         play_layout.addRow("播放状态:", self.play_status)
         play_layout.addRow("播放队列:", self.queue_count)
+        play_layout.addRow("循环播放:", self.loop_status)
         play_group.setLayout(play_layout)
         
         # 下载状态
@@ -102,6 +105,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.playlist_widget = QtWidgets.QListWidget()
         self.playlist_widget.setMaximumHeight(200)
+        self.playlist_widget.itemDoubleClicked.connect(self._play_selected_file)
         playlist_layout.addWidget(self.playlist_widget)
         playlist_group.setLayout(playlist_layout)
         
@@ -112,6 +116,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.play_btn = QtWidgets.QPushButton("播放/暂停")
         self.stop_btn = QtWidgets.QPushButton("停止")
         self.next_btn = QtWidgets.QPushButton("下一首")
+        self.loop_btn = QtWidgets.QPushButton("循环: 开启")
+        self.loop_btn.setCheckable(True)
+        self.loop_btn.setChecked(True)
         self.volume_slider = QtWidgets.QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(70)
@@ -120,6 +127,7 @@ class MainWindow(QtWidgets.QMainWindow):
         control_layout.addWidget(self.play_btn, 0, 0)
         control_layout.addWidget(self.stop_btn, 0, 1)
         control_layout.addWidget(self.next_btn, 1, 0)
+        control_layout.addWidget(self.loop_btn, 1, 1)
         control_layout.addWidget(self.volume_slider, 2, 0, 1, 2)
         control_layout.addWidget(self.volume_label, 3, 0, 1, 2)
         control_group.setLayout(control_layout)
@@ -128,6 +136,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.play_btn.clicked.connect(self._toggle_play)
         self.stop_btn.clicked.connect(self._stop_play)
         self.next_btn.clicked.connect(self._next_file)
+        self.loop_btn.clicked.connect(self._toggle_loop)
         self.volume_slider.valueChanged.connect(self._volume_changed)
         
         layout.addWidget(playlist_group)
@@ -171,13 +180,31 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.player.current_process:
             self.play_status.setText("播放中")
             self.play_status.setStyleSheet("color: green; font-weight: bold;")
+            
+            # 更新当前播放文件
+            current_file = self._get_current_playing_file()
+            if current_file:
+                self.current_file.setText(current_file)
+            else:
+                self.current_file.setText("播放中...")
         else:
             self.play_status.setText("未播放")
             self.play_status.setStyleSheet("color: orange; font-weight: bold;")
+            self.current_file.setText("无")
         
         # 更新播放队列
         queue_len = len(self.player.queue) if hasattr(self.player, 'queue') else 0
         self.queue_count.setText(str(queue_len))
+        
+        # 更新循环播放状态
+        if hasattr(self.player, 'loop'):
+            loop_text = "开启" if self.player.loop else "关闭"
+            loop_color = "green" if self.player.loop else "red"
+            self.loop_status.setText(loop_text)
+            self.loop_status.setStyleSheet(f"color: {loop_color}; font-weight: bold;")
+        else:
+            self.loop_status.setText("未知")
+            self.loop_status.setStyleSheet("color: gray; font-weight: bold;")
         
         # 更新下载状态
         download_tasks = len(self.downloader.tasks) if hasattr(self.downloader, 'tasks') else 0
@@ -215,3 +242,75 @@ class MainWindow(QtWidgets.QMainWindow):
         """音量改变"""
         self.volume_label.setText(f"音量: {value}%")
         self.player.set_volume(value)
+    
+    def _toggle_loop(self) -> None:
+        """切换循环播放"""
+        if hasattr(self.player, 'loop'):
+            self.player.loop = not self.player.loop
+            loop_text = "循环: 开启" if self.player.loop else "循环: 关闭"
+            self.loop_btn.setText(loop_text)
+            self.loop_btn.setChecked(self.player.loop)
+            print(f"循环播放已{'开启' if self.player.loop else '关闭'}")
+    
+    def _play_selected_file(self, item) -> None:
+        """播放选中的文件"""
+        try:
+            # 获取选中项的索引
+            index = self.playlist_widget.row(item)
+            if 0 <= index < len(self.player.queue):
+                selected_file = self.player.queue[index]
+                print(f"播放选中的文件: {selected_file.name}")
+                
+                # 设置当前文件索引并播放
+                self.player.current_file_index = index
+                self.player.play(selected_file)
+            else:
+                print("无效的播放列表索引")
+        except Exception as e:
+            print(f"播放选中文件时出错: {e}")
+    
+    def _get_current_playing_file(self) -> str:
+        """获取当前播放的文件名"""
+        try:
+            if hasattr(self.player, 'queue') and hasattr(self.player, 'current_file_index'):
+                if 0 <= self.player.current_file_index < len(self.player.queue):
+                    current_file = self.player.queue[self.player.current_file_index]
+                    return current_file.name
+                
+            # 如果无法通过索引获取，尝试通过其他方式
+            if hasattr(self.player, '_get_current_file'):
+                current_file = self.player._get_current_file()
+                if current_file:
+                    return current_file.name
+                    
+        except Exception as e:
+            print(f"获取当前播放文件时出错: {e}")
+            
+        return ""
+    
+    def get_current_file_info(self) -> dict:
+        """获取当前播放文件信息（用于MQTT状态报告）"""
+        info = {
+            "current_file": "",
+            "current_index": 0,
+            "total_files": 0,
+            "playing": False
+        }
+        
+        try:
+            # 播放状态
+            info["playing"] = bool(self.player.current_process)
+            
+            # 文件队列信息
+            if hasattr(self.player, 'queue'):
+                info["total_files"] = len(self.player.queue)
+                
+                if hasattr(self.player, 'current_file_index') and 0 <= self.player.current_file_index < len(self.player.queue):
+                    current_file = self.player.queue[self.player.current_file_index]
+                    info["current_file"] = current_file.name
+                    info["current_index"] = self.player.current_file_index + 1
+                    
+        except Exception as e:
+            print(f"获取播放文件信息时出错: {e}")
+            
+        return info

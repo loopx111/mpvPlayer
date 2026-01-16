@@ -3,6 +3,8 @@ import sys
 import threading
 import queue
 import time
+import signal
+import atexit
 from typing import Any, Dict, Optional, Callable, List
 from PySide6 import QtWidgets, QtCore
 from .config.loader import load_config
@@ -102,6 +104,12 @@ class ApplicationManager:
         
         # 设置消息订阅
         self._setup_message_subscriptions()
+        
+        # 注册信号处理器
+        self._setup_signal_handlers()
+        
+        # 注册退出处理器
+        atexit.register(self.cleanup)
     
     def _setup_message_subscriptions(self) -> None:
         """设置消息订阅"""
@@ -144,6 +152,26 @@ class ApplicationManager:
                 self.player.stop_play()
             elif action == "next":
                 self.player.next_file()
+    
+    def _setup_signal_handlers(self) -> None:
+        """设置信号处理器"""
+        def signal_handler(signum, frame):
+            signal_name = signal.Signals(signum).name if hasattr(signal, 'Signals') else f'信号 {signum}'
+            self.log.info(f"收到信号 {signal_name} ({signum})，准备退出...")
+            self.cleanup()
+            sys.exit(0)
+        
+        # 注册信号处理器
+        try:
+            # SIGHUP：终端关闭时发送
+            signal.signal(signal.SIGHUP, signal_handler)
+            # SIGINT：Ctrl+C
+            signal.signal(signal.SIGINT, signal_handler)
+            # SIGTERM：终止信号
+            signal.signal(signal.SIGTERM, signal_handler)
+            self.log.info("已注册信号处理器: SIGHUP, SIGINT, SIGTERM")
+        except Exception as e:
+            self.log.warning(f"注册信号处理器失败: {e}")
     
     def start_components(self) -> None:
         """启动所有组件"""
@@ -225,8 +253,31 @@ class ApplicationManager:
         # 启动健康检查
         self.health_check.start()
         
+        # 设置Qt应用关闭时的清理
+        def handle_quit():
+            self.log.info("Qt应用收到关闭信号，执行清理")
+            self.cleanup()
+        
+        # 连接Qt的退出信号
+        app.aboutToQuit.connect(handle_quit)
+        
+        # 设置窗口关闭事件处理
+        def handle_close_event(event):
+            self.log.info("窗口收到关闭事件，执行清理")
+            self.cleanup()
+            event.accept()
+        
+        self.ui_window.closeEvent = handle_close_event
+        
         # 运行Qt主循环
-        sys.exit(app.exec())
+        try:
+            sys.exit(app.exec())
+        except KeyboardInterrupt:
+            self.log.info("收到键盘中断信号，执行清理")
+            self.cleanup()
+        except Exception as e:
+            self.log.error(f"应用执行异常: {e}")
+            self.cleanup()
     
     def _start_health_check(self) -> None:
         """启动健康检查"""
@@ -266,11 +317,18 @@ class ApplicationManager:
 def main() -> None:
     import argparse
     from pathlib import Path
+    import os
     
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='MPV Player Application')
     parser.add_argument('-c', '--config', help='指定配置文件路径', default=None)
+    parser.add_argument('--remote-mode', action='store_true', help='远程模式优化，避免连接断开')
     args = parser.parse_args()
+    
+    # 设置远程模式环境变量
+    if args.remote_mode:
+        os.environ['MPV_REMOTE_MODE'] = 'true'
+        print("启用远程模式优化")
     
     # 加载配置
     if args.config:

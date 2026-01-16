@@ -1,18 +1,50 @@
 #!/bin/bash
 
-# MPV Player Kylin V10 启动脚本
-# 适用于图形界面模式运行
+# MPV Player Kylin V10 改进版启动脚本
+# 添加信号处理和进程管理功能
 
 # 设置信号处理器
 cleanup() {
     echo "收到退出信号，正在清理..."
     
     # 查找并终止相关进程
-    pkill -f "python.*src.app" || true
-    pkill -f "mpv" || true
+    if [ -n "$APP_PID" ]; then
+        echo "终止应用进程 (PID: $APP_PID)"
+        kill -TERM "$APP_PID" 2>/dev/null || true
+        
+        # 等待进程终止
+        for i in {1..10}; do
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+                break
+            fi
+            sleep 0.5
+        done
+        
+        # 如果进程仍在运行，强制杀死
+        if kill -0 "$APP_PID" 2>/dev/null; then
+            echo "强制杀死进程 (PID: $APP_PID)"
+            kill -KILL "$APP_PID" 2>/dev/null || true
+        fi
+    fi
     
-    # 等待进程结束
-    sleep 2
+    # 清理僵尸进程
+    echo "清理僵尸进程..."
+    pkill -f "python.*src.app" 2>/dev/null || true
+    pkill -f "mpv" 2>/dev/null || true
+    
+    # 等待进程清理
+    sleep 1
+    
+    # 检查是否还有相关进程
+    if pgrep -f "python.*src.app" > /dev/null; then
+        echo "仍有应用进程在运行，强制清理..."
+        pkill -9 -f "python.*src.app" 2>/dev/null || true
+    fi
+    
+    if pgrep -f "mpv" > /dev/null; then
+        echo "仍有MPV进程在运行，强制清理..."
+        pkill -9 -f "mpv" 2>/dev/null || true
+    fi
     
     echo "清理完成"
     exit 0
@@ -127,7 +159,14 @@ fi
 
 # 启动应用
 echo "启动 MPV Player (Kylin 图形界面模式)..."
+echo "进程PID: $$"
 export QT_QPA_PLATFORM=xcb
-$PYTHON_CMD -m src.app -c "$KYLIN_CONFIG_FILE"
+$PYTHON_CMD -m src.app -c "$KYLIN_CONFIG_FILE" &
+APP_PID=$!
 
-echo "应用已退出"
+# 等待应用进程
+wait "$APP_PID"
+exit_code=$?
+
+echo "应用已退出，退出码: $exit_code"
+exit $exit_code

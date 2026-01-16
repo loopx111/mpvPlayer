@@ -170,7 +170,7 @@ class MqttClient:
     def _on_message(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
         payload = msg.payload.decode("utf-8", errors="ignore")
         topic = msg.topic
-        self.log.debug("MQTT消息 %s %s", topic, payload)
+        self.log.debug(f"MQTT消息 {topic} {payload}")
         with self._lock:
             cbs = list(self.callbacks.get(topic, []))
         
