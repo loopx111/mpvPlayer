@@ -3146,3 +3146,347 @@
 2026-01-15 16:50:28,037 [INFO] mpv - [mpv] MPV进程已正常终止
 2026-01-15 16:50:29,607 [INFO] mqtt - [mqtt] MQTT正常断开连接
 2026-01-15 16:50:29,608 [INFO] health - [health] stop: 健康检查已停止
+2026-01-16 15:00:44,550 [WARNING] app - [Application] 注册信号处理器失败: module 'signal' has no attribute 'SIGHUP'
+2026-01-16 15:00:44,551 [INFO] mqtt.service - [service] ['设备/mpv-player-001/命令', '设备/区域/南京/鼓楼/命令', '设备/区域/南京/命令', '设备/区域/命令', '设备/命令']: 启动MQTT服务，订阅主题: %s
+2026-01-16 15:00:44,551 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-16 15:00:44,552 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-16 15:00:44,552 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-16 15:00:44,553 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-16 15:00:44,553 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-16 15:00:44,554 [INFO] mqtt - [mqtt] 尝试连接MQTT服务器: 192.168.30.55:1883
+2026-01-16 15:00:44,554 [INFO] mqtt.service - [service] MQTT服务启动成功
+2026-01-16 15:00:44,555 [INFO] health - [health] register_component: 注册组件健康检查: mqtt
+2026-01-16 15:00:44,556 [INFO] health - [health] register_component: 注册组件健康检查: downloader
+2026-01-16 15:00:44,556 [INFO] mpv - [mpv] 检测到系统: windows, 使用 mpv 路径: D:\soft\mpv\mpv.exe
+2026-01-16 15:00:44,558 [INFO] health - [health] register_component: 注册组件健康检查: player
+2026-01-16 15:00:44,741 [INFO] health - [health] register_component: 注册组件健康检查: ui
+2026-01-16 15:00:44,742 [INFO] mpv - [mpv] 在 D:\soft\mpv 目录下找到 3 个视频文件
+2026-01-16 15:00:44,751 [INFO] mqtt - [mqtt] MQTT连接成功
+2026-01-16 15:00:44,756 [INFO] mpv - [mpv]   1. atlas.mp4
+2026-01-16 15:00:44,756 [INFO] health - [health] start: 健康检查已启动
+2026-01-16 15:00:44,757 [INFO] mqtt.service - [service] MQTT连接成功，启动心跳消息
+2026-01-16 15:00:44,761 [INFO] mpv - [mpv]   2. ma.mp4
+2026-01-16 15:00:44,783 [INFO] mpv - [mpv]   3. miaotangzhiwai.mp4
+2026-01-16 15:00:44,786 [INFO] mpv - [mpv] 播放列表文件已创建: D:\code\mpvPlayer\data\playlist.txt
+2026-01-16 15:00:44,790 [INFO] mpv - [mpv] 播放列表包含 3 个视频文件
+2026-01-16 15:00:45,792 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-16 15:00:45,793 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-16 15:00:45,793 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:00:45,794 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:00:45,794 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:00:45,802 [INFO] mpv - [mpv] MPV 进程已启动，PID: 1572
+2026-01-16 15:00:52,035 [INFO] mpv - [mpv] 开始播放文件: ma.mp4
+2026-01-16 15:00:52,036 [INFO] mpv - [mpv] 当前播放索引: 2/3
+2026-01-16 15:00:52,036 [INFO] mpv - [mpv] 终止当前播放进程
+2026-01-16 15:00:52,038 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:00:52,039 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:00:52,039 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:00:52,044 [INFO] mpv - [mpv] MPV 进程已启动，PID: 10620
+2026-01-16 15:00:52,073 [INFO] mpv - [mpv] 播放进程已正常终止
+2026-01-16 15:01:31,971 [INFO] mpv - [mpv] 开始播放文件: ma.mp4
+2026-01-16 15:01:31,972 [INFO] mpv - [mpv] 当前播放索引: 2/3
+2026-01-16 15:01:31,972 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:01:31,973 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:01:31,973 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:01:31,980 [INFO] mpv - [mpv] MPV 进程已启动，PID: 16228
+2026-01-16 15:02:27,019 [INFO] mpv - [mpv] MPV进程已结束，退出码: 0
+2026-01-16 15:02:27,029 [INFO] mpv - [mpv] 检测到播放完成，自动播放下一个文件
+2026-01-16 15:02:27,030 [INFO] mpv - [mpv] 自动切换到下一个文件: miaotangzhiwai.mp4
+2026-01-16 15:02:27,030 [INFO] mpv - [mpv] 开始播放文件: miaotangzhiwai.mp4
+2026-01-16 15:02:27,031 [INFO] mpv - [mpv] 当前播放索引: 3/3
+2026-01-16 15:02:27,032 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:02:27,032 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:02:27,033 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:02:27,041 [INFO] mpv - [mpv] MPV 进程已启动，PID: 6820
+2026-01-16 15:02:33,060 [INFO] mpv - [mpv] MPV进程已结束，退出码: 0
+2026-01-16 15:02:33,061 [INFO] mpv - [mpv] 检测到播放完成，自动播放下一个文件
+2026-01-16 15:02:33,061 [INFO] mpv - [mpv] 自动切换到下一个文件: atlas.mp4
+2026-01-16 15:02:33,062 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-16 15:02:33,062 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-16 15:02:33,063 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:02:33,063 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:02:33,064 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:02:33,068 [INFO] mpv - [mpv] MPV 进程已启动，PID: 1568
+2026-01-16 15:02:43,127 [INFO] mpv - [mpv] MPV进程已结束，退出码: 0
+2026-01-16 15:02:43,128 [INFO] mpv - [mpv] 检测到播放完成，自动播放下一个文件
+2026-01-16 15:02:43,128 [INFO] mpv - [mpv] 自动切换到下一个文件: ma.mp4
+2026-01-16 15:02:43,129 [INFO] mpv - [mpv] 开始播放文件: ma.mp4
+2026-01-16 15:02:43,129 [INFO] mpv - [mpv] 当前播放索引: 2/3
+2026-01-16 15:02:43,130 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:02:43,130 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:02:43,131 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:02:43,136 [INFO] mpv - [mpv] MPV 进程已启动，PID: 11968
+2026-01-16 15:02:57,246 [INFO] mpv - [mpv] 开始播放文件: miaotangzhiwai.mp4
+2026-01-16 15:02:57,246 [INFO] mpv - [mpv] 当前播放索引: 3/3
+2026-01-16 15:02:57,247 [INFO] mpv - [mpv] 终止当前播放进程
+2026-01-16 15:02:57,249 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-16 15:02:57,249 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-16 15:02:57,250 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-16 15:02:57,255 [INFO] mpv - [mpv] MPV 进程已启动，PID: 15388
+2026-01-16 15:02:57,321 [INFO] mpv - [mpv] 播放进程已正常终止
+2026-01-16 15:03:41,860 [INFO] app - [Application] 窗口收到关闭事件，执行清理
+2026-01-16 15:03:44,763 [INFO] health - [health] stop: 健康检查已停止
+2026-01-16 15:03:45,523 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-16 15:03:46,277 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-16 15:03:49,978 [INFO] mqtt - [mqtt] MQTT正常断开连接
+2026-01-16 15:03:50,086 [INFO] app - [Application] Qt应用收到关闭信号，执行清理
+2026-01-16 15:03:50,087 [INFO] health - [health] stop: 健康检查已停止
+2026-01-16 15:03:50,089 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-16 15:03:50,089 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-16 15:03:50,090 [INFO] health - [health] stop: 健康检查已停止
+2026-01-16 15:03:50,091 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-16 15:03:50,091 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-16 15:03:50,093 [INFO] health - [health] stop: 健康检查已停止
+2026-01-16 15:03:50,095 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-16 15:03:50,096 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:54:58,750 [WARNING] app - [Application] 注册信号处理器失败: module 'signal' has no attribute 'SIGHUP'
+2026-01-19 10:54:58,751 [INFO] mqtt.service - [service] ['设备/mpv-player-001/命令', '设备/区域/南京/鼓楼/命令', '设备/区域/南京/命令', '设备/区域/命令', '设备/命令']: 启动MQTT服务，订阅主题: %s
+2026-01-19 10:54:58,751 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:54:58,751 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:54:58,752 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:54:58,752 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:54:58,753 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:54:58,753 [INFO] mqtt - [mqtt] 尝试连接MQTT服务器: 192.168.30.55:1883
+2026-01-19 10:54:58,754 [INFO] mqtt.service - [service] MQTT服务启动成功
+2026-01-19 10:54:58,754 [INFO] health - [health] register_component: 注册组件健康检查: mqtt
+2026-01-19 10:54:58,755 [INFO] health - [health] register_component: 注册组件健康检查: downloader
+2026-01-19 10:54:58,755 [INFO] mpv - [mpv] 检测到系统: windows, 使用 mpv 路径: D:\soft\mpv\mpv.exe
+2026-01-19 10:54:58,757 [INFO] health - [health] register_component: 注册组件健康检查: player
+2026-01-19 10:54:59,322 [INFO] health - [health] register_component: 注册组件健康检查: ui
+2026-01-19 10:54:59,323 [INFO] mpv - [mpv] 在 D:\soft\mpv 目录下找到 3 个视频文件
+2026-01-19 10:54:59,345 [INFO] mpv - [mpv]   1. atlas.mp4
+2026-01-19 10:54:59,346 [INFO] mpv - [mpv]   2. ma.mp4
+2026-01-19 10:54:59,346 [WARNING] health - [health] health_check_failed: 组件 mqtt 健康检查失败 (1/2)
+2026-01-19 10:54:59,346 [INFO] health - [health] start: 健康检查已启动
+2026-01-19 10:54:59,349 [INFO] mpv - [mpv]   3. miaotangzhiwai.mp4
+2026-01-19 10:54:59,354 [INFO] mpv - [mpv] 播放列表文件已创建: D:\code\mpvPlayer\data\playlist.txt
+2026-01-19 10:54:59,371 [INFO] mpv - [mpv] 播放列表包含 3 个视频文件
+2026-01-19 10:55:00,379 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-19 10:55:00,380 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-19 10:55:00,380 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 10:55:00,381 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 10:55:00,381 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 10:55:01,378 [INFO] mpv - [mpv] MPV 进程已启动，PID: 15904
+2026-01-19 10:55:02,427 [INFO] mqtt - [mqtt] MQTT连接成功
+2026-01-19 10:55:02,429 [INFO] mqtt.service - [service] MQTT连接成功，启动心跳消息
+2026-01-19 10:55:29,360 [INFO] health - [health] health_recovered: 组件 mqtt 已恢复健康
+2026-01-19 10:56:02,407 [INFO] app - [Application] 窗口收到关闭事件，执行清理
+2026-01-19 10:56:07,423 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:56:08,311 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:56:09,035 [INFO] mpv - [mpv] 15904: 清理MPV进程，PID: %d
+2026-01-19 10:56:09,036 [INFO] mpv - [mpv] MPV进程已正常终止，退出码: 0
+2026-01-19 10:56:09,036 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:56:12,460 [INFO] mqtt - [mqtt] MQTT正常断开连接
+2026-01-19 10:56:12,482 [INFO] app - [Application] Qt应用收到关闭信号，执行清理
+2026-01-19 10:56:17,496 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:56:17,497 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:56:17,497 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:56:22,511 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:56:22,511 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:56:22,512 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:56:27,514 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:56:27,515 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:56:27,515 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:57:48,272 [WARNING] app - [Application] 注册信号处理器失败: module 'signal' has no attribute 'SIGHUP'
+2026-01-19 10:57:48,273 [INFO] mqtt.service - [service] ['设备/mpv-player-001/命令', '设备/区域/南京/鼓楼/命令', '设备/区域/南京/命令', '设备/区域/命令', '设备/命令']: 启动MQTT服务，订阅主题: %s
+2026-01-19 10:57:48,273 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:57:48,274 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:57:48,274 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:57:48,275 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:57:48,275 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 10:57:48,276 [INFO] mqtt - [mqtt] 尝试连接MQTT服务器: 192.168.30.55:1883
+2026-01-19 10:57:48,276 [INFO] mqtt.service - [service] MQTT服务启动成功
+2026-01-19 10:57:48,277 [INFO] health - [health] register_component: 注册组件健康检查: mqtt
+2026-01-19 10:57:48,277 [INFO] health - [health] register_component: 注册组件健康检查: downloader
+2026-01-19 10:57:48,278 [INFO] mpv - [mpv] 检测到系统: windows, 使用 mpv 路径: D:\soft\mpv\mpv.exe
+2026-01-19 10:57:48,280 [INFO] health - [health] register_component: 注册组件健康检查: player
+2026-01-19 10:57:48,435 [INFO] health - [health] register_component: 注册组件健康检查: ui
+2026-01-19 10:57:48,437 [WARNING] health - [health] health_check_failed: 组件 mqtt 健康检查失败 (1/2)
+2026-01-19 10:57:48,437 [INFO] health - [health] start: 健康检查已启动
+2026-01-19 10:57:48,438 [INFO] mpv - [mpv] 在 D:\soft\mpv 目录下找到 3 个视频文件
+2026-01-19 10:57:48,439 [INFO] mpv - [mpv]   1. atlas.mp4
+2026-01-19 10:57:48,440 [INFO] mpv - [mpv]   2. ma.mp4
+2026-01-19 10:57:48,440 [INFO] mpv - [mpv]   3. miaotangzhiwai.mp4
+2026-01-19 10:57:48,442 [INFO] mpv - [mpv] 播放列表文件已创建: D:\code\mpvPlayer\data\playlist.txt
+2026-01-19 10:57:48,443 [INFO] mpv - [mpv] 播放列表包含 3 个视频文件
+2026-01-19 10:57:48,476 [INFO] mqtt - [mqtt] MQTT连接成功
+2026-01-19 10:57:48,477 [INFO] mqtt.service - [service] MQTT连接成功，启动心跳消息
+2026-01-19 10:57:49,445 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-19 10:57:49,446 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-19 10:57:49,446 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 10:57:49,447 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 10:57:49,447 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 10:57:49,455 [INFO] mpv - [mpv] MPV 进程已启动，PID: 10352
+2026-01-19 10:57:58,373 [INFO] mpv - [mpv] MPV进程已结束，退出码: 0
+2026-01-19 10:57:58,374 [INFO] mpv - [mpv] 检测到播放完成，自动播放下一个文件
+2026-01-19 10:57:58,374 [INFO] mpv - [mpv] 自动切换到下一个文件: ma.mp4
+2026-01-19 10:57:58,375 [INFO] mpv - [mpv] 开始播放文件: ma.mp4
+2026-01-19 10:57:58,375 [INFO] mpv - [mpv] 当前播放索引: 2/3
+2026-01-19 10:57:58,376 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 10:57:58,376 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 10:57:58,376 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 10:57:58,380 [INFO] mpv - [mpv] MPV 进程已启动，PID: 9692
+2026-01-19 10:58:02,836 [INFO] app - [Application] 窗口收到关闭事件，执行清理
+2026-01-19 10:58:07,838 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:58:08,505 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:58:09,514 [INFO] mpv - [mpv] 9692: 清理MPV进程，PID: %d
+2026-01-19 10:58:09,559 [INFO] mpv - [mpv] MPV进程已正常终止，退出码: 1
+2026-01-19 10:58:09,565 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:58:13,487 [INFO] mqtt - [mqtt] MQTT正常断开连接
+2026-01-19 10:58:13,521 [INFO] app - [Application] Qt应用收到关闭信号，执行清理
+2026-01-19 10:58:18,439 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:58:18,440 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:58:18,440 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:58:18,441 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:58:18,441 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:58:18,442 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 10:58:18,442 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 10:58:18,442 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 10:58:18,443 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:25:23,700 [WARNING] app - [Application] 注册信号处理器失败: module 'signal' has no attribute 'SIGHUP'
+2026-01-19 11:25:23,701 [INFO] mqtt.service - [service] ['设备/mpv-player-001/命令', '设备/区域/南京/鼓楼/命令', '设备/区域/南京/命令', '设备/区域/命令', '设备/命令']: 启动MQTT服务，订阅主题: %s
+2026-01-19 11:25:23,701 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:25:23,701 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:25:23,702 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:25:23,702 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:25:23,702 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:25:23,703 [INFO] mqtt - [mqtt] 尝试连接MQTT服务器: 192.168.30.55:1883
+2026-01-19 11:25:23,703 [INFO] mqtt.service - [service] MQTT服务启动成功
+2026-01-19 11:25:23,704 [INFO] health - [health] register_component: 注册组件健康检查: mqtt
+2026-01-19 11:25:23,704 [INFO] health - [health] register_component: 注册组件健康检查: downloader
+2026-01-19 11:25:23,705 [INFO] mpv - [mpv] 检测到系统: windows, 使用 mpv 路径: D:\soft\mpv\mpv.exe
+2026-01-19 11:25:23,707 [INFO] health - [health] register_component: 注册组件健康检查: player
+2026-01-19 11:25:24,099 [INFO] mpv - [mpv] 在 D:\soft\mpv 目录下找到 3 个视频文件
+2026-01-19 11:25:24,099 [INFO] mpv - [mpv]   1. atlas.mp4
+2026-01-19 11:25:24,100 [INFO] mpv - [mpv]   2. ma.mp4
+2026-01-19 11:25:24,100 [INFO] mpv - [mpv]   3. miaotangzhiwai.mp4
+2026-01-19 11:25:24,101 [INFO] mpv - [mpv] 播放列表文件已创建: D:\code\mpvPlayer\data\playlist.txt
+2026-01-19 11:25:24,102 [INFO] mpv - [mpv] 播放列表包含 3 个视频文件
+2026-01-19 11:25:24,173 [INFO] mqtt - [mqtt] MQTT连接成功
+2026-01-19 11:25:24,178 [INFO] mqtt.service - [service] MQTT连接成功，启动心跳消息
+2026-01-19 11:25:25,103 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-19 11:25:25,104 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-19 11:25:25,104 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 11:25:25,105 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 11:25:25,105 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 11:25:25,428 [INFO] mpv - [mpv] MPV 进程已启动，PID: 11668
+2026-01-19 11:25:28,357 [INFO] health - [health] register_component: 注册组件健康检查: ui
+2026-01-19 11:25:28,428 [INFO] health - [health] start: 健康检查已启动
+2026-01-19 11:33:48,419 [INFO] mpv - [mpv] MPV进程已结束，退出码: 0
+2026-01-19 11:33:48,421 [INFO] mpv - [mpv] 检测到播放完成，自动播放下一个文件
+2026-01-19 11:33:48,421 [INFO] mpv - [mpv] 自动切换到下一个文件: ma.mp4
+2026-01-19 11:33:48,422 [INFO] mpv - [mpv] 开始播放文件: ma.mp4
+2026-01-19 11:33:48,422 [INFO] mpv - [mpv] 当前播放索引: 2/3
+2026-01-19 11:33:48,423 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 11:33:48,423 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 11:33:48,424 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 11:33:48,429 [INFO] mpv - [mpv] MPV 进程已启动，PID: 13508
+2026-01-19 11:33:52,764 [INFO] app - [Application] 窗口收到关闭事件，执行清理
+2026-01-19 11:33:57,766 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:33:58,035 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:33:58,603 [INFO] mpv - [mpv] 13508: 清理MPV进程，PID: %d
+2026-01-19 11:33:58,663 [INFO] mpv - [mpv] MPV进程已正常终止，退出码: 1
+2026-01-19 11:33:58,664 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:34:03,345 [INFO] mqtt - [mqtt] MQTT正常断开连接
+2026-01-19 11:34:03,396 [INFO] app - [Application] Qt应用收到关闭信号，执行清理
+2026-01-19 11:34:03,415 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:34:03,423 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:34:03,423 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:34:03,424 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:34:03,424 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:34:03,425 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:34:03,426 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:34:03,426 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:34:03,427 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:37:41,357 [WARNING] app - [Application] 注册信号处理器失败: module 'signal' has no attribute 'SIGHUP'
+2026-01-19 11:37:41,358 [INFO] mqtt.service - [service] ['设备/mpv-player-001/命令', '设备/区域/南京/鼓楼/命令', '设备/区域/南京/命令', '设备/区域/命令', '设备/命令']: 启动MQTT服务，订阅主题: %s
+2026-01-19 11:37:41,359 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:37:41,359 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:37:41,359 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:37:41,360 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:37:41,360 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 11:37:41,361 [INFO] mqtt - [mqtt] 尝试连接MQTT服务器: 192.168.30.55:1883
+2026-01-19 11:37:41,361 [INFO] mqtt.service - [service] MQTT服务启动成功
+2026-01-19 11:37:41,362 [INFO] health - [health] register_component: 注册组件健康检查: mqtt
+2026-01-19 11:37:41,362 [INFO] health - [health] register_component: 注册组件健康检查: downloader
+2026-01-19 11:37:41,363 [INFO] mpv - [mpv] 检测到系统: windows, 使用 mpv 路径: D:\soft\mpv\mpv.exe
+2026-01-19 11:37:41,365 [INFO] health - [health] register_component: 注册组件健康检查: player
+2026-01-19 11:37:41,468 [INFO] mqtt - [mqtt] MQTT连接成功
+2026-01-19 11:37:41,470 [INFO] mqtt.service - [service] MQTT连接成功，启动心跳消息
+2026-01-19 11:37:41,471 [INFO] mpv - [mpv] 在 D:\soft\mpv 目录下找到 3 个视频文件
+2026-01-19 11:37:41,471 [INFO] mpv - [mpv]   1. atlas.mp4
+2026-01-19 11:37:41,472 [INFO] mpv - [mpv]   2. ma.mp4
+2026-01-19 11:37:41,472 [INFO] mpv - [mpv]   3. miaotangzhiwai.mp4
+2026-01-19 11:37:41,474 [INFO] mpv - [mpv] 播放列表文件已创建: D:\code\mpvPlayer\data\playlist.txt
+2026-01-19 11:37:41,474 [INFO] mpv - [mpv] 播放列表包含 3 个视频文件
+2026-01-19 11:37:41,728 [INFO] health - [health] register_component: 注册组件健康检查: ui
+2026-01-19 11:37:41,734 [INFO] health - [health] start: 健康检查已启动
+2026-01-19 11:37:42,476 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-19 11:37:42,476 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-19 11:37:42,477 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 11:37:42,478 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 11:37:42,478 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 11:37:42,486 [INFO] mpv - [mpv] MPV 进程已启动，PID: 6576
+2026-01-19 11:42:40,963 [INFO] app - [Application] 窗口收到关闭事件，执行清理
+2026-01-19 11:42:41,744 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:42:42,569 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:42:42,646 [INFO] mpv - [mpv] 6576: 清理MPV进程，PID: %d
+2026-01-19 11:42:42,706 [INFO] mpv - [mpv] MPV进程已正常终止，退出码: 1
+2026-01-19 11:42:42,707 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:42:46,552 [INFO] mqtt - [mqtt] MQTT正常断开连接
+2026-01-19 11:42:46,563 [INFO] app - [Application] Qt应用收到关闭信号，执行清理
+2026-01-19 11:42:46,564 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:42:46,564 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:42:46,565 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:42:46,565 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:42:46,566 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:42:46,567 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 11:42:46,568 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 11:42:46,568 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 11:42:46,568 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 14:35:53,454 [WARNING] app - [Application] 注册信号处理器失败: module 'signal' has no attribute 'SIGHUP'
+2026-01-19 14:35:53,455 [INFO] mqtt.service - [service] ['设备/mpv-player-001/命令', '设备/区域/南京/鼓楼/命令', '设备/区域/南京/命令', '设备/区域/命令', '设备/命令']: 启动MQTT服务，订阅主题: %s
+2026-01-19 14:35:53,456 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 14:35:53,456 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 14:35:53,457 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 14:35:53,457 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 14:35:53,457 [WARNING] mqtt - [mqtt] 订阅时未连接，连接后将自动订阅
+2026-01-19 14:35:53,458 [INFO] mqtt - [mqtt] 尝试连接MQTT服务器: 192.168.30.55:1883
+2026-01-19 14:35:53,458 [INFO] mqtt.service - [service] MQTT服务启动成功
+2026-01-19 14:35:53,459 [INFO] health - [health] register_component: 注册组件健康检查: mqtt
+2026-01-19 14:35:53,460 [INFO] health - [health] register_component: 注册组件健康检查: downloader
+2026-01-19 14:35:53,460 [INFO] mpv - [mpv] 检测到系统: windows, 使用 mpv 路径: D:\soft\mpv\mpv.exe
+2026-01-19 14:35:53,463 [INFO] health - [health] register_component: 注册组件健康检查: player
+2026-01-19 14:35:53,876 [INFO] mpv - [mpv] 在 D:\soft\mpv 目录下找到 3 个视频文件
+2026-01-19 14:35:53,877 [INFO] mpv - [mpv]   1. atlas.mp4
+2026-01-19 14:35:53,877 [INFO] mpv - [mpv]   2. ma.mp4
+2026-01-19 14:35:53,878 [INFO] mpv - [mpv]   3. miaotangzhiwai.mp4
+2026-01-19 14:35:53,879 [INFO] mpv - [mpv] 播放列表文件已创建: D:\code\mpvPlayer\data\playlist.txt
+2026-01-19 14:35:53,880 [INFO] mpv - [mpv] 播放列表包含 3 个视频文件
+2026-01-19 14:35:53,938 [INFO] mqtt - [mqtt] MQTT连接成功
+2026-01-19 14:35:53,941 [INFO] mqtt.service - [service] MQTT连接成功，启动心跳消息
+2026-01-19 14:35:54,254 [INFO] health - [health] register_component: 注册组件健康检查: ui
+2026-01-19 14:35:54,257 [INFO] health - [health] start: 健康检查已启动
+2026-01-19 14:35:54,881 [INFO] mpv - [mpv] 开始播放文件: atlas.mp4
+2026-01-19 14:35:54,882 [INFO] mpv - [mpv] 当前播放索引: 1/3
+2026-01-19 14:35:54,882 [INFO] mpv - [mpv] 使用播放列表模式进行播放
+2026-01-19 14:35:54,883 [INFO] mpv - [mpv] 启动 MPV 命令: D:\soft\mpv\mpv.exe --playlist=D:\code\mpvPlayer\data\playlist.txt --loop-playlist=inf --volume=70 --keep-open=no --fullscreen --cursor-autohide=3000 --input-default-bindings=yes
+2026-01-19 14:35:54,884 [INFO] mpv - [mpv] 启动 MPV 进程
+2026-01-19 14:35:55,252 [INFO] mpv - [mpv] MPV 进程已启动，PID: 6036
+2026-01-19 14:36:05,362 [INFO] app - [Application] 窗口收到关闭事件，执行清理
+2026-01-19 14:36:10,364 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 14:36:10,658 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 14:36:11,553 [INFO] mpv - [mpv] 6036: 清理MPV进程，PID: %d
+2026-01-19 14:36:11,610 [INFO] mpv - [mpv] MPV进程已正常终止，退出码: 1
+2026-01-19 14:36:11,611 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 14:36:14,062 [INFO] mqtt - [mqtt] MQTT正常断开连接
+2026-01-19 14:36:14,077 [INFO] app - [Application] Qt应用收到关闭信号，执行清理
+2026-01-19 14:36:19,090 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 14:36:19,090 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 14:36:19,091 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 14:36:24,100 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 14:36:24,100 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 14:36:24,101 [INFO] mpv - [mpv] MPV控制器资源清理完成
+2026-01-19 14:36:24,258 [INFO] health - [health] stop: 健康检查已停止
+2026-01-19 14:36:24,258 [INFO] mpv - [mpv] 开始清理MPV控制器资源...
+2026-01-19 14:36:24,259 [INFO] mpv - [mpv] MPV控制器资源清理完成

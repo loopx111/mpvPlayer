@@ -41,6 +41,19 @@ if errorlevel 1 (
     echo 依赖安装成功
 )
 
+REM 检查OpenCV依赖（摄像头功能需要）
+python -c "import cv2" >nul 2>&1
+if errorlevel 1 (
+    echo 警告: OpenCV 未安装，摄像头功能将不可用
+    echo 正在安装OpenCV...
+    pip install opencv-python websockets
+    if errorlevel 1 (
+        echo OpenCV安装失败，摄像头功能将不可用
+    ) else (
+        echo OpenCV安装成功
+    )
+)
+
 REM 检查MPV播放器
 if not exist "D:\soft\mpv\mpv.exe" (
     echo 警告: MPV播放器未找到在 D:\soft\mpv\mpv.exe

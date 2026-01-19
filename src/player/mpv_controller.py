@@ -313,6 +313,14 @@ class MpvController:
             "--input-default-bindings=yes"
         ]
         
+        # 麒麟系统特定设置：禁用问题解码器，使用软件解码
+        if platform.system().lower() == "linux":
+            cmd.extend([
+                "--hwdec=no",           # 禁用硬件解码
+                "--vd=lavc,h264",       # 强制使用libavcodec h264解码器
+                "--vo=x11"              # 强制使用x11视频输出
+            ])
+        
         return cmd
     
     def _build_single_file_command(self, file: Path) -> List[str]:
@@ -325,6 +333,14 @@ class MpvController:
             f"--cursor-autohide={3000}",
             "--input-default-bindings=yes"
         ]
+        
+        # 麒麟系统特定设置：禁用问题解码器，使用软件解码
+        if platform.system().lower() == "linux":
+            cmd.extend([
+                "--hwdec=no",           # 禁用硬件解码
+                "--vd=lavc,h264",       # 强制使用libavcodec h264解码器
+                "--vo=x11"              # 强制使用x11视频输出
+            ])
         
         # 添加循环设置
         if self.loop:

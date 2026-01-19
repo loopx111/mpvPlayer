@@ -18,7 +18,8 @@ sudo apt install -y \
     python3-venv \
     mpv \
     git \
-    wget
+    wget \
+    v4l-utils
 
 # 检查是否安装成功
 if ! command -v python3 &> /dev/null; then

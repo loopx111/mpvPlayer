@@ -5,6 +5,7 @@ from ..config.models import AppConfig
 from ..comm.mqtt_service import MqttService
 from ..file_dist.manager import DownloadManager
 from ..player.mpv_controller import MpvController
+from ..player.camera_controller import CameraController
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -14,11 +15,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mqtt = mqtt
         self.downloader = downloader
         self.player = player
+        
+        # 初始化摄像头控制器
+        self.camera_controller = CameraController()
+        
         self.setWindowTitle("广告屏播放器控制台")
         self.resize(1200, 800)
         self.setMinimumSize(1000, 600)
         self._build_ui()
         self._setup_timer()
+        
+        # 启动摄像头
+        self._setup_camera()
 
     def _build_ui(self) -> None:
         # 创建主布局
@@ -86,9 +94,58 @@ class MainWindow(QtWidgets.QMainWindow):
         download_layout.addRow("最后更新:", self.last_update)
         download_group.setLayout(download_layout)
         
+        # 摄像头显示区域
+        camera_group = QtWidgets.QGroupBox("摄像头监控")
+        camera_layout = QtWidgets.QVBoxLayout()
+        
+        # 摄像头设备选择
+        device_layout = QtWidgets.QHBoxLayout()
+        device_layout.addWidget(QtWidgets.QLabel("摄像头设备:"))
+        self.camera_device_combo = QtWidgets.QComboBox()
+        self.camera_device_combo.addItem("自动检测", -1)
+        device_layout.addWidget(self.camera_device_combo)
+        device_layout.addStretch(1)
+        
+        # 摄像头控制按钮
+        control_layout = QtWidgets.QHBoxLayout()
+        self.camera_start_btn = QtWidgets.QPushButton("启动摄像头")
+        self.camera_stop_btn = QtWidgets.QPushButton("停止摄像头")
+        self.camera_capture_btn = QtWidgets.QPushButton("拍照")
+        
+        self.camera_start_btn.clicked.connect(self._start_camera)
+        self.camera_stop_btn.clicked.connect(self._stop_camera)
+        self.camera_capture_btn.clicked.connect(self._capture_image)
+        
+        self.camera_stop_btn.setEnabled(False)
+        self.camera_capture_btn.setEnabled(False)
+        
+        control_layout.addWidget(self.camera_start_btn)
+        control_layout.addWidget(self.camera_stop_btn)
+        control_layout.addWidget(self.camera_capture_btn)
+        control_layout.addStretch(1)
+        
+        # 摄像头状态显示
+        self.camera_status = QtWidgets.QLabel("摄像头未启动")
+        self.camera_status.setStyleSheet("color: gray; font-weight: bold;")
+        
+        # 摄像头画面显示
+        camera_layout.addLayout(device_layout)
+        camera_layout.addLayout(control_layout)
+        camera_layout.addWidget(self.camera_status)
+        
+        # 创建摄像头显示区域（先创建占位符，稍后更新）
+        self.camera_display_area = QtWidgets.QWidget()
+        camera_display_layout = QtWidgets.QVBoxLayout()
+        self.camera_display_area.setLayout(camera_display_layout)
+        self.camera_display_area.setMinimumSize(320, 240)
+        camera_layout.addWidget(self.camera_display_area)
+        
+        camera_group.setLayout(camera_layout)
+        
         layout.addWidget(sys_group)
         layout.addWidget(play_group)
         layout.addWidget(download_group)
+        layout.addWidget(camera_group)
         layout.addStretch(1)
         
         panel.setLayout(layout)
@@ -109,38 +166,9 @@ class MainWindow(QtWidgets.QMainWindow):
         playlist_layout.addWidget(self.playlist_widget)
         playlist_group.setLayout(playlist_layout)
         
-        # 控制按钮
-        control_group = QtWidgets.QGroupBox("控制操作")
-        control_layout = QtWidgets.QGridLayout()
-        
-        self.play_btn = QtWidgets.QPushButton("播放/暂停")
-        self.stop_btn = QtWidgets.QPushButton("停止")
-        self.next_btn = QtWidgets.QPushButton("下一首")
-        self.loop_btn = QtWidgets.QPushButton("循环: 开启")
-        self.loop_btn.setCheckable(True)
-        self.loop_btn.setChecked(True)
-        self.volume_slider = QtWidgets.QSlider(Qt.Horizontal)
-        self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(70)
-        self.volume_label = QtWidgets.QLabel("音量: 70%")
-        
-        control_layout.addWidget(self.play_btn, 0, 0)
-        control_layout.addWidget(self.stop_btn, 0, 1)
-        control_layout.addWidget(self.next_btn, 1, 0)
-        control_layout.addWidget(self.loop_btn, 1, 1)
-        control_layout.addWidget(self.volume_slider, 2, 0, 1, 2)
-        control_layout.addWidget(self.volume_label, 3, 0, 1, 2)
-        control_group.setLayout(control_layout)
-        
-        # 连接信号
-        self.play_btn.clicked.connect(self._toggle_play)
-        self.stop_btn.clicked.connect(self._stop_play)
-        self.next_btn.clicked.connect(self._next_file)
-        self.loop_btn.clicked.connect(self._toggle_loop)
-        self.volume_slider.valueChanged.connect(self._volume_changed)
+        # 控制按钮已移除，简化界面
         
         layout.addWidget(playlist_group)
-        layout.addWidget(control_group)
         layout.addStretch(1)
         
         panel.setLayout(layout)
@@ -223,34 +251,7 @@ class MainWindow(QtWidgets.QMainWindow):
             item = QtWidgets.QListWidgetItem(f"{i+1}. {file_path.name}")
             self.playlist_widget.addItem(item)
 
-    def _toggle_play(self) -> None:
-        """播放/暂停"""
-        print("播放/暂停按钮被点击")
-        self.player.toggle_pause()
 
-    def _stop_play(self) -> None:
-        """停止播放"""
-        print("停止按钮被点击")
-        self.player.stop_play()
-
-    def _next_file(self) -> None:
-        """下一首"""
-        print("下一首按钮被点击")
-        self.player.next_file()
-
-    def _volume_changed(self, value: int) -> None:
-        """音量改变"""
-        self.volume_label.setText(f"音量: {value}%")
-        self.player.set_volume(value)
-    
-    def _toggle_loop(self) -> None:
-        """切换循环播放"""
-        if hasattr(self.player, 'loop'):
-            self.player.loop = not self.player.loop
-            loop_text = "循环: 开启" if self.player.loop else "循环: 关闭"
-            self.loop_btn.setText(loop_text)
-            self.loop_btn.setChecked(self.player.loop)
-            print(f"循环播放已{'开启' if self.player.loop else '关闭'}")
     
     def _play_selected_file(self, item) -> None:
         """播放选中的文件"""
@@ -314,3 +315,205 @@ class MainWindow(QtWidgets.QMainWindow):
             print(f"获取播放文件信息时出错: {e}")
             
         return info
+
+    def _setup_camera(self):
+        """初始化摄像头设置"""
+        try:
+            # 初始化摄像头控制器（自动检测设备）
+            success = self.camera_controller.initialize(resolution=(640, 480), fps=15)
+            
+            if success:
+                print("摄像头控制器初始化成功")
+                # 设置帧回调（用于WebSocket发送等）
+                self.camera_controller.set_frame_callback(self._on_camera_frame)
+                
+                # 更新设备选择框
+                self._update_camera_device_list()
+                
+                # 添加摄像头控件到界面
+                self._update_camera_display()
+                
+                # 自动启动摄像头
+                self._start_camera()
+            else:
+                print("摄像头控制器初始化失败")
+                self.camera_status.setText("摄像头初始化失败")
+                self.camera_status.setStyleSheet("color: red; font-weight: bold;")
+                
+        except Exception as e:
+            print(f"摄像头设置错误: {e}")
+            self.camera_status.setText(f"摄像头错误: {e}")
+            self.camera_status.setStyleSheet("color: red; font-weight: bold;")
+    
+    def _update_camera_device_list(self):
+        """更新摄像头设备列表"""
+        try:
+            # 清空现有设备列表
+            self.camera_device_combo.clear()
+            self.camera_device_combo.addItem("自动检测", -1)
+            
+            # 添加可用的摄像头设备
+            if hasattr(self.camera_controller, 'available_cameras'):
+                available_cameras = self.camera_controller.available_cameras
+                
+                if available_cameras:
+                    for cam_index in available_cameras:
+                        self.camera_device_combo.addItem(f"摄像头 {cam_index}", cam_index)
+                    
+                    # 选择当前使用的摄像头
+                    current_index = self.camera_controller.camera_index
+                    for i in range(self.camera_device_combo.count()):
+                        if self.camera_device_combo.itemData(i) == current_index:
+                            self.camera_device_combo.setCurrentIndex(i)
+                            break
+                else:
+                    self.camera_device_combo.addItem("未检测到摄像头", -1)
+            
+            # 连接设备选择信号
+            self.camera_device_combo.currentIndexChanged.connect(self._on_camera_device_changed)
+            
+        except Exception as e:
+            print(f"更新设备列表错误: {e}")
+    
+    def _update_camera_display(self):
+        """更新摄像头显示控件"""
+        try:
+            # 清空现有显示区域
+            layout = self.camera_display_area.layout()
+            while layout.count():
+                item = layout.takeAt(0)
+                if item.widget():
+                    item.widget().deleteLater()
+            
+            # 添加摄像头控件
+            camera_widget = self.camera_controller.get_widget()
+            if camera_widget:
+                layout.addWidget(camera_widget)
+                print("摄像头显示控件已添加到界面")
+            else:
+                # 如果没有摄像头控件，显示提示信息
+                placeholder = QtWidgets.QLabel("摄像头控件未初始化")
+                placeholder.setAlignment(QtCore.Qt.AlignCenter)
+                placeholder.setStyleSheet("color: gray; font-size: 14px;")
+                layout.addWidget(placeholder)
+                
+        except Exception as e:
+            print(f"更新摄像头显示错误: {e}")
+    
+    def _on_camera_device_changed(self, index):
+        """摄像头设备选择变化"""
+        try:
+            if self.camera_controller.is_connected:
+                # 如果摄像头正在运行，先停止
+                self._stop_camera()
+            
+            # 获取选中的设备索引
+            device_index = self.camera_device_combo.itemData(index)
+            
+            if device_index == -1:
+                # 自动检测模式
+                print("切换到自动检测模式")
+            else:
+                # 指定设备模式
+                print(f"选择摄像头设备: {device_index}")
+                
+                # 重新初始化控制器
+                success = self.camera_controller.initialize(
+                    camera_index=device_index, 
+                    resolution=(640, 480), 
+                    fps=15
+                )
+                
+                if success:
+                    self.camera_status.setText("摄像头设备已切换")
+                    self.camera_status.setStyleSheet("color: green; font-weight: bold;")
+                    # 更新显示控件
+                    self._update_camera_display()
+                else:
+                    self.camera_status.setText("设备切换失败")
+                    self.camera_status.setStyleSheet("color: red; font-weight: bold;")
+                
+                # 3秒后恢复状态
+                QtCore.QTimer.singleShot(3000, lambda: self.camera_status.setText("摄像头未启动"))
+                
+        except Exception as e:
+            print(f"切换摄像头设备错误: {e}")
+    
+    def _start_camera(self):
+        """启动摄像头"""
+        try:
+            success = self.camera_controller.start_camera()
+            if success:
+                self.camera_status.setText("摄像头运行中")
+                self.camera_status.setStyleSheet("color: green; font-weight: bold;")
+                self.camera_start_btn.setEnabled(False)
+                self.camera_stop_btn.setEnabled(True)
+                self.camera_capture_btn.setEnabled(True)
+                print("摄像头启动成功")
+            else:
+                self.camera_status.setText("摄像头启动失败")
+                self.camera_status.setStyleSheet("color: red; font-weight: bold;")
+                print("摄像头启动失败")
+        except Exception as e:
+            print(f"启动摄像头错误: {e}")
+    
+    def _stop_camera(self):
+        """停止摄像头"""
+        try:
+            self.camera_controller.stop_camera()
+            self.camera_status.setText("摄像头已停止")
+            self.camera_status.setStyleSheet("color: gray; font-weight: bold;")
+            self.camera_start_btn.setEnabled(True)
+            self.camera_stop_btn.setEnabled(False)
+            self.camera_capture_btn.setEnabled(False)
+            print("摄像头已停止")
+        except Exception as e:
+            print(f"停止摄像头错误: {e}")
+    
+    def _capture_image(self):
+        """拍照保存"""
+        try:
+            import os
+            from datetime import datetime
+            
+            # 创建captures目录
+            captures_dir = "data/captures"
+            os.makedirs(captures_dir, exist_ok=True)
+            
+            # 生成文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"capture_{timestamp}.jpg"
+            file_path = os.path.join(captures_dir, filename)
+            
+            # 拍照保存
+            success = self.camera_controller.capture_image(file_path)
+            
+            if success:
+                self.camera_status.setText(f"照片已保存: {filename}")
+                print(f"照片已保存: {file_path}")
+                
+                # 3秒后恢复状态显示
+                QtCore.QTimer.singleShot(3000, lambda: self.camera_status.setText("摄像头运行中"))
+            else:
+                self.camera_status.setText("拍照失败")
+                print("拍照失败")
+                
+        except Exception as e:
+            print(f"拍照错误: {e}")
+    
+    def _on_camera_frame(self, frame):
+        """摄像头帧回调函数（用于WebSocket发送等）"""
+        # 这里可以添加WebSocket发送逻辑
+        # 例如：self._send_frame_via_websocket(frame)
+        pass
+    
+    def closeEvent(self, event):
+        """窗口关闭事件"""
+        # 停止摄像头
+        try:
+            if hasattr(self, 'camera_controller'):
+                self.camera_controller.stop_camera()
+        except Exception as e:
+            print(f"关闭摄像头错误: {e}")
+        
+        event.accept()
