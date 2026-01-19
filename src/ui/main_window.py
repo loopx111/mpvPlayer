@@ -111,17 +111,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.camera_start_btn = QtWidgets.QPushButton("启动摄像头")
         self.camera_stop_btn = QtWidgets.QPushButton("停止摄像头")
         self.camera_capture_btn = QtWidgets.QPushButton("拍照")
+        self.camera_rotate_btn = QtWidgets.QPushButton("旋转90°")
         
         self.camera_start_btn.clicked.connect(self._start_camera)
         self.camera_stop_btn.clicked.connect(self._stop_camera)
         self.camera_capture_btn.clicked.connect(self._capture_image)
+        self.camera_rotate_btn.clicked.connect(self._rotate_camera)
         
         self.camera_stop_btn.setEnabled(False)
         self.camera_capture_btn.setEnabled(False)
+        self.camera_rotate_btn.setEnabled(False)
         
         control_layout.addWidget(self.camera_start_btn)
         control_layout.addWidget(self.camera_stop_btn)
         control_layout.addWidget(self.camera_capture_btn)
+        control_layout.addWidget(self.camera_rotate_btn)
         control_layout.addStretch(1)
         
         # 摄像头状态显示
@@ -449,6 +453,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.camera_start_btn.setEnabled(False)
                 self.camera_stop_btn.setEnabled(True)
                 self.camera_capture_btn.setEnabled(True)
+                self.camera_rotate_btn.setEnabled(True)
                 print("摄像头启动成功")
             else:
                 self.camera_status.setText("摄像头启动失败")
@@ -466,9 +471,30 @@ class MainWindow(QtWidgets.QMainWindow):
             self.camera_start_btn.setEnabled(True)
             self.camera_stop_btn.setEnabled(False)
             self.camera_capture_btn.setEnabled(False)
+            self.camera_rotate_btn.setEnabled(False)
             print("摄像头已停止")
         except Exception as e:
             print(f"停止摄像头错误: {e}")
+    
+    def _rotate_camera(self):
+        """旋转摄像头画面"""
+        try:
+            # 每次点击向右旋转90度
+            self.camera_controller.rotate_camera(90)
+            
+            # 更新按钮文本显示当前角度
+            rotation_angle = 0
+            if hasattr(self.camera_controller.camera_widget, 'get_rotation_angle'):
+                rotation_angle = self.camera_controller.camera_widget.get_rotation_angle()
+            
+            self.camera_rotate_btn.setText(f"旋转{rotation_angle}°")
+            self.camera_status.setText(f"画面已旋转至{rotation_angle}度")
+            
+            # 3秒后恢复状态显示
+            QtCore.QTimer.singleShot(3000, lambda: self.camera_status.setText("摄像头运行中"))
+            
+        except Exception as e:
+            print(f"旋转摄像头错误: {e}")
     
     def _capture_image(self):
         """拍照保存"""

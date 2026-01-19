@@ -99,12 +99,16 @@ class CameraWidget(QtWidgets.QLabel):
         """)
         self.setText("摄像头未启动")
         self.current_frame = None
+        self.rotation_angle = 0  # 当前旋转角度：0, 90, 180, 270
     
     def update_frame(self, frame: np.ndarray):
         """更新摄像头画面"""
         try:
+            # 应用旋转
+            rotated_frame = self._apply_rotation(frame)
+            
             # 调整图像大小以适应控件
-            h, w = frame.shape[:2]
+            h, w = rotated_frame.shape[:2]
             target_size = self.size()
             
             # 保持宽高比缩放
@@ -117,7 +121,7 @@ class CameraWidget(QtWidgets.QLabel):
                 new_height = int(new_width / aspect_ratio)
             
             # 缩放图像
-            resized_frame = cv2.resize(frame, (new_width, new_height))
+            resized_frame = cv2.resize(rotated_frame, (new_width, new_height))
             
             # 转换为QPixmap
             h, w, c = resized_frame.shape
@@ -126,10 +130,36 @@ class CameraWidget(QtWidgets.QLabel):
             pixmap = QtGui.QPixmap.fromImage(q_img)
             
             self.setPixmap(pixmap)
-            self.current_frame = frame.copy()
+            self.current_frame = frame.copy()  # 保存原始帧
             
         except Exception as e:
             print(f"更新摄像头画面错误: {e}")
+    
+    def _apply_rotation(self, frame: np.ndarray) -> np.ndarray:
+        """应用旋转角度到图像"""
+        if self.rotation_angle == 0:
+            return frame
+        elif self.rotation_angle == 90:
+            return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        elif self.rotation_angle == 180:
+            return cv2.rotate(frame, cv2.ROTATE_180)
+        elif self.rotation_angle == 270:
+            return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        else:
+            return frame
+    
+    def rotate_frame(self, angle: int = 90):
+        """旋转摄像头画面"""
+        self.rotation_angle = (self.rotation_angle + angle) % 360
+        print(f"摄像头画面旋转至: {self.rotation_angle}度")
+        
+        # 如果当前有帧，重新显示
+        if self.current_frame is not None:
+            self.update_frame(self.current_frame)
+    
+    def get_rotation_angle(self) -> int:
+        """获取当前旋转角度"""
+        return self.rotation_angle
     
     def get_current_frame(self) -> Optional[np.ndarray]:
         """获取当前帧"""
@@ -171,6 +201,7 @@ class CameraController:
         self.fps = 30
         self.on_frame_callback = None
         self.available_cameras = []
+        self.rotation_angle = 0  # 旋转角度：0, 90, 180, 270
     
     def initialize(self, camera_index: int = None, resolution: tuple = (640, 480), fps: int = 30):
         """初始化摄像头控制器"""
@@ -361,14 +392,38 @@ class CameraController:
         try:
             frame = self.camera_widget.get_current_frame()
             if frame is not None:
+                # 应用当前旋转角度
+                rotated_frame = self._apply_rotation_to_frame(frame)
                 # 转换回BGR格式保存
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                frame_bgr = cv2.cvtColor(rotated_frame, cv2.COLOR_RGB2BGR)
                 cv2.imwrite(file_path, frame_bgr)
                 return True
         except Exception as e:
             print(f"捕获图像错误: {e}")
         
         return False
+    
+    def rotate_camera(self, angle: int = 90):
+        """旋转摄像头画面"""
+        if self.camera_widget:
+            self.camera_widget.rotate_frame(angle)
+    
+    def _apply_rotation_to_frame(self, frame: np.ndarray) -> np.ndarray:
+        """应用旋转角度到图像"""
+        if not self.camera_widget:
+            return frame
+        
+        rotation_angle = self.camera_widget.get_rotation_angle()
+        if rotation_angle == 0:
+            return frame
+        elif rotation_angle == 90:
+            return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        elif rotation_angle == 180:
+            return cv2.rotate(frame, cv2.ROTATE_180)
+        elif rotation_angle == 270:
+            return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        else:
+            return frame
 
 
 def list_available_cameras() -> list:
