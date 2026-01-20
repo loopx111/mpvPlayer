@@ -6,6 +6,7 @@ from ..comm.mqtt_service import MqttService
 from ..file_dist.manager import DownloadManager
 from ..player.mpv_controller import MpvController
 from ..player.camera_controller import CameraController
+from ..camera.camera_capture import AICameraController
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -16,8 +17,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.downloader = downloader
         self.player = player
         
-        # 初始化摄像头控制器
-        self.camera_controller = CameraController()
+        # 初始化AI摄像头控制器
+        self.camera_controller = AICameraController()
         
         self.setWindowTitle("广告屏播放器控制台")
         self.resize(1200, 800)
@@ -112,20 +113,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.camera_stop_btn = QtWidgets.QPushButton("停止摄像头")
         self.camera_capture_btn = QtWidgets.QPushButton("拍照")
         self.camera_rotate_btn = QtWidgets.QPushButton("旋转90°")
+        self.ai_analysis_btn = QtWidgets.QPushButton("AI分析: 开启")
         
         self.camera_start_btn.clicked.connect(self._start_camera)
         self.camera_stop_btn.clicked.connect(self._stop_camera)
         self.camera_capture_btn.clicked.connect(self._capture_image)
         self.camera_rotate_btn.clicked.connect(self._rotate_camera)
+        self.ai_analysis_btn.clicked.connect(self._toggle_ai_analysis)
         
         self.camera_stop_btn.setEnabled(False)
         self.camera_capture_btn.setEnabled(False)
         self.camera_rotate_btn.setEnabled(False)
+        self.ai_analysis_btn.setEnabled(False)
+        
+        # 设置AI按钮样式
+        self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
         
         control_layout.addWidget(self.camera_start_btn)
         control_layout.addWidget(self.camera_stop_btn)
         control_layout.addWidget(self.camera_capture_btn)
         control_layout.addWidget(self.camera_rotate_btn)
+        control_layout.addWidget(self.ai_analysis_btn)
         control_layout.addStretch(1)
         
         # 摄像头状态显示
@@ -146,10 +154,52 @@ class MainWindow(QtWidgets.QMainWindow):
         
         camera_group.setLayout(camera_layout)
         
+        # AI分析结果显示区域（独立于摄像头画面）
+        ai_analysis_group = QtWidgets.QGroupBox("AI分析结果")
+        ai_layout = QtWidgets.QVBoxLayout()
+        
+        # 分析结果状态标签
+        self.ai_status_label = QtWidgets.QLabel("AI分析未启用")
+        self.ai_status_label.setStyleSheet("color: gray; font-weight: bold;")
+        ai_layout.addWidget(self.ai_status_label)
+        
+        # 分析结果详细信息区域
+        self.ai_results_text = QtWidgets.QTextEdit()
+        self.ai_results_text.setReadOnly(True)
+        self.ai_results_text.setMaximumHeight(120)
+        self.ai_results_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 5px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 10px;
+            }
+        """)
+        self.ai_results_text.setPlainText("等待AI分析结果...")
+        ai_layout.addWidget(self.ai_results_text)
+        
+        # 性能统计信息
+        performance_layout = QtWidgets.QHBoxLayout()
+        
+        self.fps_label = QtWidgets.QLabel("FPS: --")
+        self.latency_label = QtWidgets.QLabel("延迟: --")
+        self.analysis_count_label = QtWidgets.QLabel("分析次数: --")
+        
+        performance_layout.addWidget(self.fps_label)
+        performance_layout.addWidget(self.latency_label)
+        performance_layout.addWidget(self.analysis_count_label)
+        performance_layout.addStretch(1)
+        
+        ai_layout.addLayout(performance_layout)
+        ai_analysis_group.setLayout(ai_layout)
+        
         layout.addWidget(sys_group)
         layout.addWidget(play_group)
         layout.addWidget(download_group)
         layout.addWidget(camera_group)
+        layout.addWidget(ai_analysis_group)
         layout.addStretch(1)
         
         panel.setLayout(layout)
@@ -323,13 +373,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def _setup_camera(self):
         """初始化摄像头设置"""
         try:
-            # 初始化摄像头控制器（自动检测设备）
-            success = self.camera_controller.initialize(resolution=(640, 480), fps=15)
+            # 初始化AI摄像头控制器（默认使用摄像头2并启用AI分析）
+            success = self.camera_controller.initialize(
+                camera_index=2,  # 默认使用摄像头2
+                resolution=(640, 480), 
+                fps=15,
+                enable_ai=True,  # 启用AI分析
+                model_path="models/yolov5s.onnx"  # AI模型路径
+            )
             
             if success:
                 print("摄像头控制器初始化成功")
-                # 设置帧回调（用于WebSocket发送等）
-                self.camera_controller.set_frame_callback(self._on_camera_frame)
+                
+                # 设置分析结果回调函数
+                self.camera_controller.set_analysis_callback(self._on_analysis_result)
                 
                 # 更新设备选择框
                 self._update_camera_device_list()
@@ -407,6 +464,19 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_camera_device_changed(self, index):
         """摄像头设备选择变化"""
         try:
+            # 保存当前AI分析状态
+            ai_was_enabled = False
+            if hasattr(self.camera_controller, 'ai_enabled'):
+                ai_was_enabled = self.camera_controller.ai_enabled
+                # 如果AI分析正在运行，先停止
+                if ai_was_enabled:
+                    print("[设备切换] 停止AI分析...")
+                    self.camera_controller.disable_ai_analysis()
+                    
+                    # 更新分析结果状态
+                    self.ai_status_label.setText("AI分析已停止")
+                    self.ai_status_label.setStyleSheet("color: gray; font-weight: bold;")
+            
             if self.camera_controller.is_connected:
                 # 如果摄像头正在运行，先停止
                 self._stop_camera()
@@ -431,6 +501,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 if success:
                     self.camera_status.setText("摄像头设备已切换")
                     self.camera_status.setStyleSheet("color: green; font-weight: bold;")
+                    
+                    # 重新设置分析结果回调
+                    self.camera_controller.set_analysis_callback(self._on_analysis_result)
+                    
+                    # 如果之前启用了AI分析，重新启用
+                    if ai_was_enabled:
+                        print("[设备切换] 重新启用AI分析...")
+                        # 使用默认模型路径重新启用AI分析
+                        ai_success = self.camera_controller.enable_ai_analysis("models/yolov5s.onnx")
+                        if ai_success:
+                            print("[设备切换] ✓ AI分析重新启用成功")
+                            self.ai_analysis_btn.setText("AI分析: 开启")
+                            self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+                            
+                            # 更新分析结果状态
+                            self.ai_status_label.setText("AI分析运行中...")
+                            self.ai_status_label.setStyleSheet("color: green; font-weight: bold;")
+                            self.ai_results_text.setPlainText("等待AI分析结果...")
+                        else:
+                            print("[设备切换] ✗ AI分析重新启用失败")
+                            self.ai_analysis_btn.setText("AI分析: 关闭")
+                            self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; font-weight: bold; }")
+                    
                     # 更新显示控件
                     self._update_camera_display()
                 else:
@@ -454,6 +547,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.camera_stop_btn.setEnabled(True)
                 self.camera_capture_btn.setEnabled(True)
                 self.camera_rotate_btn.setEnabled(True)
+                self.ai_analysis_btn.setEnabled(True)
+                
+                # 如果AI功能已启用，更新按钮状态
+                if hasattr(self.camera_controller, 'ai_enabled') and self.camera_controller.ai_enabled:
+                    self.ai_analysis_btn.setText("AI分析: 开启")
+                    self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+                else:
+                    self.ai_analysis_btn.setText("AI分析: 关闭")
+                    self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; font-weight: bold; }")
+                
                 print("摄像头启动成功")
             else:
                 self.camera_status.setText("摄像头启动失败")
@@ -472,6 +575,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.camera_stop_btn.setEnabled(False)
             self.camera_capture_btn.setEnabled(False)
             self.camera_rotate_btn.setEnabled(False)
+            self.ai_analysis_btn.setEnabled(False)
             print("摄像头已停止")
         except Exception as e:
             print(f"停止摄像头错误: {e}")
@@ -533,6 +637,101 @@ class MainWindow(QtWidgets.QMainWindow):
         # 例如：self._send_frame_via_websocket(frame)
         pass
     
+    def _toggle_ai_analysis(self):
+        """切换AI分析功能"""
+        try:
+            if not hasattr(self.camera_controller, 'ai_enabled'):
+                print("当前摄像头控制器不支持AI分析功能")
+                return
+            
+            if self.camera_controller.ai_enabled:
+                # 关闭AI分析
+                self.camera_controller.disable_ai_analysis()
+                self.ai_analysis_btn.setText("AI分析: 关闭")
+                self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; font-weight: bold; }")
+                self.camera_status.setText("AI分析已关闭")
+                
+                # 更新分析结果状态
+                self.ai_status_label.setText("AI分析已关闭")
+                self.ai_status_label.setStyleSheet("color: gray; font-weight: bold;")
+                self.ai_results_text.setPlainText("AI分析功能已关闭")
+                
+                print("AI分析功能已关闭")
+            else:
+                # 启用AI分析
+                self.camera_controller.enable_ai_analysis()
+                self.ai_analysis_btn.setText("AI分析: 开启")
+                self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+                self.camera_status.setText("AI分析已开启")
+                
+                # 更新分析结果状态
+                self.ai_status_label.setText("AI分析运行中...")
+                self.ai_status_label.setStyleSheet("color: green; font-weight: bold;")
+                self.ai_results_text.setPlainText("等待AI分析结果...")
+                
+                print("AI分析功能已开启")
+            
+            # 3秒后恢复状态显示
+            QtCore.QTimer.singleShot(3000, lambda: self.camera_status.setText("摄像头运行中"))
+            
+        except Exception as e:
+            print(f"切换AI分析功能错误: {e}")
+            self.camera_status.setText(f"AI分析错误: {e}")
+    
+    def _on_analysis_result(self, analysis_result: dict):
+        """AI分析结果回调函数"""
+        try:
+            # 更新分析结果状态
+            self.ai_status_label.setText("AI分析运行中")
+            self.ai_status_label.setStyleSheet("color: green; font-weight: bold;")
+            
+            # 提取分析结果
+            detection_result = analysis_result.get('detection_result', None)
+            statistics = analysis_result.get('statistics', {})
+            performance = analysis_result.get('performance', {})
+            
+            # 构建结果文本
+            result_text = []
+            result_text.append("=== AI分析结果 ===")
+            
+            if detection_result:
+                result_text.append(f"👥 检测人数: {detection_result.person_count}")
+                result_text.append(f"📏 检测框数: {len(detection_result.detections)}")
+                if detection_result.detections:
+                    confidences = [f"{d[4]:.2f}" for d in detection_result.detections]
+                    result_text.append(f"🎯 置信度: {', '.join(confidences)}")
+            
+            if statistics:
+                result_text.append(f"📊 当前人数: {getattr(statistics, 'current_count', 0)}")
+                result_text.append(f"📈 平均人数: {getattr(statistics, 'avg_count', 0):.1f}")
+                result_text.append(f"📈 趋势: {getattr(statistics, 'trend', '未知')}")
+            
+            if performance:
+                result_text.append(f"⚡ 分析FPS: {performance.get('analysis_fps', 0):.1f}")
+                result_text.append(f"⏱️ 延迟: {performance.get('avg_analysis_time_ms', 0):.1f}ms")
+                result_text.append(f"🔄 总分析次数: {performance.get('total_analyses', 0)}")
+            
+            # 更新分析结果文本框
+            self.ai_results_text.setPlainText('\n'.join(result_text))
+            
+            # 更新性能统计标签
+            self.fps_label.setText(f"FPS: {performance.get('analysis_fps', 0):.1f}")
+            self.latency_label.setText(f"延迟: {performance.get('avg_analysis_time_ms', 0):.1f}ms")
+            self.analysis_count_label.setText(f"分析次数: {performance.get('total_analyses', 0)}")
+            
+        except Exception as e:
+            print(f"更新AI分析结果时出错: {e}")
+            self.ai_results_text.setPlainText(f"更新结果时出错: {e}")
+    
+    def update_ai_analysis_result(self, analysis_info: dict):
+        """更新AI分析结果显示（兼容性方法，实际使用_on_analysis_result）"""
+        try:
+            # 直接调用新的回调方法
+            self._on_analysis_result(analysis_info)
+        except Exception as e:
+            print(f"更新AI分析结果显示错误: {e}")
+            self.ai_results_text.setPlainText(f"更新显示错误: {e}")
+
     def closeEvent(self, event):
         """窗口关闭事件"""
         # 停止摄像头

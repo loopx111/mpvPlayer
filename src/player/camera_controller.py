@@ -61,7 +61,11 @@ class CameraThread(QThread):
                 if ret:
                     # 转换为RGB格式用于显示
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    print(f"[摄像头线程] 读取到新帧，尺寸: {frame_rgb.shape}，准备发送信号...")
                     self.frame_ready.emit(frame_rgb)
+                    print("[摄像头线程] 帧信号发送完成")
+                else:
+                    print("[摄像头线程] 读取帧失败，ret=", ret)
                 
                 # 控制帧率
                 elapsed = (time.time() - start_time) * 1000
@@ -350,12 +354,21 @@ class CameraController:
     
     def _on_frame_received(self, frame: np.ndarray):
         """处理接收到的帧"""
+        print("[摄像头线程] 接收到新帧，尺寸: {}, 调用回调函数...".format(frame.shape if frame is not None else "None"))
+        
         if self.camera_widget:
             self.camera_widget.update_frame(frame)
         
         # 调用回调函数（用于WebSocket发送等）
         if self.on_frame_callback:
-            self.on_frame_callback(frame)
+            print("[摄像头线程] 帧回调函数存在，开始调用...")
+            try:
+                self.on_frame_callback(frame)
+                print("[摄像头线程] 帧回调函数调用成功")
+            except Exception as e:
+                print("[摄像头线程] 帧回调函数调用失败: {}".format(e))
+        else:
+            print("[摄像头线程] 帧回调函数不存在，跳过")
     
     def _check_camera_status(self):
         """检查摄像头状态"""

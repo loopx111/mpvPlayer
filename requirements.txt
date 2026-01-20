@@ -6,3 +6,10 @@ watchdog==4.0.1
 python-dotenv==1.0.1
 opencv-python==4.9.0.80
 websockets==13.0.0
+numpy==1.24.4  # 修复NumPy 2.0兼容性问题
+
+# AI模块专用依赖
+# ONNX Runtime - CPU版本（兼容飞腾E2000）
+onnxruntime==1.19.2
+# 核心绑定和系统监控
+psutil==7.2.1

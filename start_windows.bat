@@ -54,6 +54,19 @@ if errorlevel 1 (
     )
 )
 
+REM 检查AI模块依赖（人数识别功能需要）
+python -c "import onnxruntime" >nul 2>&1
+if errorlevel 1 (
+    echo 警告: AI模块依赖未安装，人数识别功能将不可用
+    echo 正在安装AI模块依赖...
+    pip install onnxruntime psutil
+    if errorlevel 1 (
+        echo AI模块依赖安装失败，人数识别功能将不可用
+    ) else (
+        echo AI模块依赖安装成功
+    )
+)
+
 REM 检查MPV播放器
 if not exist "D:\soft\mpv\mpv.exe" (
     echo 警告: MPV播放器未找到在 D:\soft\mpv\mpv.exe

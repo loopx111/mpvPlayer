@@ -160,205 +160,139 @@ class VideoAnalyzer(QThread):
 
 
 class AICameraWidget(CameraWidget):
-    """AI增强的摄像头显示控件"""
+    """AI增强的摄像头显示控件（仅显示摄像头画面，分析结果在独立窗口显示）"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        # AI分析结果显示
-        self.detection_overlay = True  # 是否显示检测框
+        # AI分析结果（仅用于存储，不在画面中显示）
+        self.detection_overlay = True  # 启用检测框显示，但分析文本在独立窗口显示
         self.current_detections = []
         self.analysis_info = {}
         
-        # 信息显示区域
-        self.info_text = ""
-        
-        # 自定义样式
+        # 简化样式，只保留基本边框
         self.setStyleSheet("""
             QLabel {
-                border: 2px solid #4CAF50;
-                border-radius: 8px;
-                background-color: #f8f9fa;
-                color: #2c3e50;
-                font-size: 12px;
-                font-family: 'Segoe UI', Arial, sans-serif;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                background-color: #f0f0f0;
             }
         """)
     
     def update_analysis_info(self, analysis_result: Dict):
-        """更新分析信息"""
+        """更新分析信息（仅存储，不在画面中显示）"""
         self.analysis_info = analysis_result
         
-        # 更新检测结果
+        # 更新检测结果（用于可能的其他用途）
         if 'detection_result' in analysis_result:
             self.current_detections = analysis_result['detection_result'].detections
         
-        # 更新信息文本
-        self._update_info_text()
-        
-        # 触发重绘
-        self.update()
+        # 注意：不再触发重绘，因为分析结果在独立窗口显示
+        # 移除了_info_text的更新和重绘调用
     
-    def _update_info_text(self):
-        """更新信息显示文本"""
-        if not self.analysis_info:
-            self.info_text = "AI分析准备中...\n等待摄像头帧"
-            return
+    def paintEvent(self, arg__1):
+        """重绘事件 - 显示摄像头画面和检测框，但不显示分析文本"""
+        super().paintEvent(arg__1)
         
-        stats = self.analysis_info.get('statistics', PeopleCountStats())
-        perf = self.analysis_info.get('performance', {})
-        detection_result = self.analysis_info.get('detection_result', None)
-        
-        # 基础信息 - 直接访问dataclass属性
-        info_lines = [
-            f"👥 当前人数: {stats.current_count}",
-            f"📊 平均人数: {stats.avg_count}",
-            f"📈 趋势: {stats.trend}",
-            f"⚡ 分析FPS: {perf.get('analysis_fps', 0)}",
-            f"⏱️ 延迟: {perf.get('avg_analysis_time_ms', 0)}ms",
-            f"🔄 总分析次数: {perf.get('total_analyses', 0)}"
-        ]
-        
-        # 添加检测详情
-        if detection_result:
-            info_lines.append(f"🔍 本次检测: {detection_result.person_count}人")
-            info_lines.append(f"📏 检测框数: {len(detection_result.detections)}")
-            if detection_result.detections:
-                confidences = [f"{d[4]:.2f}" for d in detection_result.detections]
-                info_lines.append(f"🎯 置信度: {', '.join(confidences)}")
-        
-        self.info_text = '\n'.join(info_lines)
+        # 如果启用了检测框显示，绘制检测框
+        if self.detection_overlay and self.current_detections:
+            self._draw_detection_boxes()
     
-    def paintEvent(self, event):
-        """重绘事件 - 添加AI分析信息显示"""
-        super().paintEvent(event)
-        
-        # 如果当前有图像，绘制检测框和信息
-        if self.current_frame is not None:
+    def _draw_detection_boxes(self):
+        """在摄像头画面上绘制检测框"""
+        try:
             painter = QtGui.QPainter(self)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            
+            # 设置绘制参数
+            box_color = QtGui.QColor(0, 255, 0, 180)  # 半透明绿色
+            text_color = QtGui.QColor(255, 255, 255)
+            box_pen = QtGui.QPen(box_color, 2)
+            painter.setPen(box_pen)
+            
+            # 获取图像显示区域和旋转角度
+            pixmap_rect = self._get_pixmap_rect()
+            rotation_angle = self.rotation_angle
+            
+            # 获取当前QPixmap的实际尺寸
+            pixmap = self.pixmap()
+            if not pixmap:
+                return
+                
+            pixmap_size = pixmap.size()
             
             # 绘制检测框
-            if self.detection_overlay and self.current_detections:
-                self._draw_detections(painter)
-            
-            # 绘制信息面板
-            self._draw_info_panel(painter)
-            
-            painter.end()
+            for detection in self.current_detections:
+                if len(detection) >= 4:
+                    # 获取检测框坐标和置信度
+                    x1, y1, x2, y2 = detection[:4]
+                    confidence = detection[4] if len(detection) > 4 else 0.0
+                    
+                    # 根据旋转角度调整坐标转换
+                    if rotation_angle in [90, 270]:
+                        # 旋转90或270度时，图像尺寸会交换
+                        # 检测框坐标需要根据旋转后的图像尺寸进行转换
+                        scale_x = pixmap_rect.width() / 480.0  # 旋转后宽度对应原始高度
+                        scale_y = pixmap_rect.height() / 640.0  # 旋转后高度对应原始宽度
+                    else:
+                        # 0或180度旋转，尺寸不变
+                        scale_x = pixmap_rect.width() / 640.0
+                        scale_y = pixmap_rect.height() / 480.0
+                    
+                    # 应用旋转变换到检测框坐标
+                    rect_x, rect_y, rect_width, rect_height = self._apply_rotation_to_detection(
+                        x1, y1, x2, y2, rotation_angle, pixmap_rect, scale_x, scale_y)
+                    
+                    # 绘制矩形框
+                    painter.drawRect(rect_x, rect_y, rect_width, rect_height)
+                    
+                    # 绘制置信度文本
+                    painter.setPen(QtGui.QPen(text_color))
+                    painter.drawText(rect_x, rect_y - 5, f"人: {confidence:.2f}")
+                    
+                    # 恢复画笔颜色
+                    painter.setPen(box_pen)
+                    
+        except Exception as e:
+            print(f"绘制检测框错误: {e}")
     
-    def _draw_detections(self, painter: QtGui.QPainter):
-        """绘制检测框"""
-        # 如果没有检测结果，直接返回
-        if not self.current_detections:
-            return
-            
-        # 计算图像在控件中的实际显示区域
-        pixmap = self.pixmap()
-        if not pixmap:
-            return
+    def _apply_rotation_to_detection(self, x1, y1, x2, y2, rotation_angle, pixmap_rect, scale_x, scale_y):
+        """根据旋转角度调整检测框坐标"""
+        if rotation_angle == 0:
+            # 0度旋转，坐标不变
+            rect_x = pixmap_rect.x() + int(x1 * scale_x)
+            rect_y = pixmap_rect.y() + int(y1 * scale_y)
+            rect_width = int((x2 - x1) * scale_x)
+            rect_height = int((y2 - y1) * scale_y)
+        elif rotation_angle == 90:
+            # 90度顺时针旋转：
+            # 原始(x1,y1) -> 旋转后(y1, 640-x2)
+            rect_x = pixmap_rect.x() + int(y1 * scale_x)
+            rect_y = pixmap_rect.y() + int((640 - x2) * scale_y)
+            rect_width = int((y2 - y1) * scale_x)
+            rect_height = int((x2 - x1) * scale_y)
+        elif rotation_angle == 180:
+            # 180度旋转：
+            # 原始(x1,y1) -> 旋转后(640-x2, 480-y2)
+            rect_x = pixmap_rect.x() + int((640 - x2) * scale_x)
+            rect_y = pixmap_rect.y() + int((480 - y2) * scale_y)
+            rect_width = int((x2 - x1) * scale_x)
+            rect_height = int((y2 - y1) * scale_y)
+        elif rotation_angle == 270:
+            # 270度旋转（逆时针90度）：
+            # 原始(x1,y1) -> 旋转后(480-y2, x1)
+            rect_x = pixmap_rect.x() + int((480 - y2) * scale_x)
+            rect_y = pixmap_rect.y() + int(x1 * scale_y)
+            rect_width = int((y2 - y1) * scale_x)
+            rect_height = int((x2 - x1) * scale_y)
+        else:
+            # 默认不旋转
+            rect_x = pixmap_rect.x() + int(x1 * scale_x)
+            rect_y = pixmap_rect.y() + int(y1 * scale_y)
+            rect_width = int((x2 - x1) * scale_x)
+            rect_height = int((y2 - y1) * scale_y)
         
-        # 获取图像在控件中的位置和尺寸
-        pixmap_rect = self._get_pixmap_rect()
-        
-        # 原始图像尺寸
-        orig_width = self.current_frame.shape[1]
-        orig_height = self.current_frame.shape[0]
-        
-        # 缩放比例（保持宽高比）
-        scale_x = pixmap_rect.width() / orig_width if orig_width > 0 else 1
-        scale_y = pixmap_rect.height() / orig_height if orig_height > 0 else 1
-        scale = min(scale_x, scale_y)  # 使用较小的比例保持宽高比
-        
-        # 计算实际显示区域（居中显示）
-        actual_width = int(orig_width * scale)
-        actual_height = int(orig_height * scale)
-        actual_x = pixmap_rect.x() + (pixmap_rect.width() - actual_width) // 2
-        actual_y = pixmap_rect.y() + (pixmap_rect.height() - actual_height) // 2
-        
-        # 绘制每个检测框
-        for detection in self.current_detections:
-            x1, y1, x2, y2, conf, class_name = detection
-            
-            # 缩放坐标到显示尺寸
-            x1_scaled = int(x1 * scale) + actual_x
-            y1_scaled = int(y1 * scale) + actual_y
-            x2_scaled = int(x2 * scale) + actual_x
-            y2_scaled = int(y2 * scale) + actual_y
-            
-            # 确保坐标在显示区域内
-            x1_scaled = max(actual_x, min(x1_scaled, actual_x + actual_width))
-            y1_scaled = max(actual_y, min(y1_scaled, actual_y + actual_height))
-            x2_scaled = max(actual_x, min(x2_scaled, actual_x + actual_width))
-            y2_scaled = max(actual_y, min(y2_scaled, actual_y + actual_height))
-            
-            # 计算边界框尺寸
-            bbox_width = max(1, x2_scaled - x1_scaled)
-            bbox_height = max(1, y2_scaled - y1_scaled)
-            
-            # 绘制边界框
-            painter.setPen(QtGui.QPen(QtGui.QColor(0, 255, 0), 3))
-            painter.drawRect(x1_scaled, y1_scaled, bbox_width, bbox_height)
-            
-            # 绘制标签背景
-            label = f'{class_name} {conf:.2f}'
-            label_rect_width = len(label) * 7 + 10
-            label_rect_height = 20
-            
-            # 确保标签不超出控件边界
-            label_x = max(0, min(x1_scaled, self.width() - label_rect_width))
-            label_y = max(0, y1_scaled - label_rect_height - 5)
-            
-            painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
-            painter.setBrush(QtGui.QBrush(QtGui.QColor(0, 255, 0, 200)))
-            painter.drawRect(label_x, label_y, label_rect_width, label_rect_height)
-            
-            # 绘制标签文本
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255)))
-            painter.setFont(QtGui.QFont('Segoe UI', 8, QtGui.QFont.Bold))
-            painter.drawText(label_x + 5, label_y + 14, label)
-    
-    def _draw_info_panel(self, painter: QtGui.QPainter):
-        """绘制信息面板"""
-        if not self.info_text:
-            return
-        
-        # 获取图像在控件中的显示区域
-        pixmap_rect = self._get_pixmap_rect()
-        if pixmap_rect.isEmpty():
-            return
-        
-        # 信息面板位置（摄像头画面右侧，确保不超出控件边界）
-        info_width = 180
-        info_height = 140
-        info_x = pixmap_rect.right() + 10
-        info_y = pixmap_rect.top()
-        
-        # 确保信息面板不超出控件边界
-        widget_width = self.width()
-        if info_x + info_width > widget_width:
-            info_x = widget_width - info_width - 5
-        
-        # 绘制背景（半透明）
-        painter.setBrush(QtGui.QBrush(QtGui.QColor(255, 255, 255, 230)))
-        painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 120)))
-        painter.drawRect(info_x, info_y, info_width, info_height)
-        
-        # 绘制标题栏
-        painter.setBrush(QtGui.QBrush(QtGui.QColor(76, 175, 80, 200)))
-        painter.drawRect(info_x, info_y, info_width, 25)
-        
-        # 绘制标题
-        painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255)))
-        painter.setFont(QtGui.QFont('Segoe UI', 10, QtGui.QFont.Bold))
-        painter.drawText(info_x + 5, info_y + 17, "AI分析结果")
-        
-        # 绘制内容文本
-        painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0)))
-        painter.setFont(QtGui.QFont('Segoe UI', 9))
-        
-        lines = self.info_text.split('\n')
-        for i, line in enumerate(lines):
-            painter.drawText(info_x + 8, info_y + 45 + i * 20, line)
+        return rect_x, rect_y, rect_width, rect_height
     
     def _get_pixmap_rect(self) -> QtCore.QRect:
         """获取图像在控件中的显示区域"""
@@ -557,8 +491,11 @@ class AICameraController(CameraController):
         if isinstance(self.camera_widget, AICameraWidget):
             self.camera_widget.update_analysis_info(analysis_result)
         
-        # 调用用户回调
+        # 调用用户回调（传递给主界面）
         if self.on_analysis_result:
+            detection_result = analysis_result.get('detection_result')
+            person_count = detection_result.person_count if detection_result else 0
+            print(f"[AI回调] 发送分析结果到主界面: {person_count}人")
             self.on_analysis_result(analysis_result)
     
     def set_analysis_callback(self, callback: Callable):

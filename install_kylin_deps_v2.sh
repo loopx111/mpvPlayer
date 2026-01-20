@@ -16,7 +16,7 @@ sudo apt update
 
 # 安装系统依赖
 echo "安装系统依赖..."
-sudo apt install -y python3 python3-pip python3-venv mpv v4l-utils
+sudo apt install -y python3 python3-pip python3-venv mpv v4l-utils libopencv-dev libgl1-mesa-glx
 
 # 创建虚拟环境
 echo "创建Python虚拟环境..."

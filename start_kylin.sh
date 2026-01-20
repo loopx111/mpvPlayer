@@ -50,8 +50,21 @@ fi
 $PYTHON_CMD -c "import PySide6" > /dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "错误: PySide6 未安装"
-    echo "请先运行: ./install_kylin_deps.sh 安装依赖"
+    echo "请先运行: ./install_kylin_deps_v2.sh 安装依赖"
     exit 1
+fi
+
+# 检查AI模块依赖
+$PYTHON_CMD -c "import onnxruntime" > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "警告: AI模块依赖未安装，人数识别功能将不可用"
+    echo "正在安装AI模块依赖..."
+    $PYTHON_CMD -m pip install onnxruntime psutil
+    if [ $? -ne 0 ]; then
+        echo "AI模块依赖安装失败，人数识别功能将不可用"
+    else
+        echo "AI模块依赖安装成功"
+    fi
 fi
 
 if ! command -v mpv &> /dev/null; then
