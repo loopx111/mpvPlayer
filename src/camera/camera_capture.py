@@ -39,7 +39,7 @@ class VideoAnalyzer(QThread):
         self.frame_lock = threading.Lock()
         
         # 性能优化：降低分析频率，减少CPU占用
-        self.max_analysis_fps = 2  # 最大分析频率：2帧/秒
+        self.max_analysis_fps = 10  # 最大分析频率：2帧/秒
         self.last_analysis_time = 0
         
         # 性能统计
@@ -396,15 +396,27 @@ class AICameraController(CameraController):
     def initialize(self, camera_index: int = None, resolution: tuple = (640, 480), 
                    fps: int = 30, enable_ai: bool = False, model_path: str = None):
         """初始化摄像头控制器（扩展AI功能）"""
-        # 先调用父类初始化
+        # 保存当前AI状态
+        ai_was_enabled = self.ai_enabled
+        
+        # 先禁用AI分析（如果正在运行）
+        if self.ai_enabled:
+            print("[AI控制器] 重新初始化，先禁用AI分析...")
+            self.disable_ai_analysis()
+        
+        # 调用父类初始化
         success = super().initialize(camera_index, resolution, fps)
         
-        if success and enable_ai:
+        if success and (enable_ai or ai_was_enabled):
             # 替换为AI增强的控件
             self.camera_widget = AICameraWidget()
             
             # 初始化AI分析
-            self.enable_ai_analysis(model_path)
+            ai_success = self.enable_ai_analysis(model_path)
+            
+            if not ai_success:
+                print("[AI控制器] ✗ AI分析初始化失败，但摄像头初始化成功")
+                # 即使AI失败，摄像头仍然可以工作
         
         return success
     
@@ -417,12 +429,22 @@ class AICameraController(CameraController):
             
             print("[AI控制器] 开始启用AI分析功能...")
             
+            # 确保先禁用已有的AI分析（防止重复初始化）
+            if self.ai_enabled and self.video_analyzer:
+                print("[AI控制器] 检测到已有AI分析器，先禁用...")
+                self.disable_ai_analysis()
+            
             # 检查摄像头是否已启动
             if not self.camera_thread or not self.camera_thread.isRunning():
                 print("[AI控制器] 摄像头未启动，先启动摄像头...")
                 if not self.start_camera():
                     print("[AI控制器] ✗ 摄像头启动失败，无法启用AI分析")
                     return False
+            
+            # 确保使用AI增强的控件
+            if not isinstance(self.camera_widget, AICameraWidget):
+                print("[AI控制器] 替换为AI增强控件...")
+                self.camera_widget = AICameraWidget()
             
             # 创建视频分析器
             print("[AI控制器] 创建视频分析器...")
@@ -439,6 +461,13 @@ class AICameraController(CameraController):
             # 等待分析器启动完成
             time.sleep(0.5)
             
+            # 检查分析器是否成功启动
+            if not self.video_analyzer.isRunning():
+                print("[AI控制器] ✗ AI分析器启动失败")
+                self.video_analyzer = None
+                self.ai_enabled = False
+                return False
+            
             # 最后设置帧回调，确保分析器已准备好接收帧
             print("[AI控制器] 设置帧回调...")
             self.set_frame_callback(self._on_camera_frame_for_ai)
@@ -453,16 +482,42 @@ class AICameraController(CameraController):
         except Exception as e:
             print("✗ 启用AI分析失败: {}".format(e))
             self.ai_enabled = False
+            self.video_analyzer = None
             return False
     
     def disable_ai_analysis(self):
         """禁用AI分析功能"""
-        if self.video_analyzer:
-            self.video_analyzer.stop_analysis()
+        try:
+            # 清理帧回调
+            if hasattr(self, 'frame_callback') and self.frame_callback:
+                self.frame_callback = None
+            
+            # 停止并清理分析器
+            if self.video_analyzer:
+                print("[AI控制器] 停止AI分析器...")
+                self.video_analyzer.stop_analysis()
+                
+                # 等待分析器完全停止
+                if self.video_analyzer.isRunning():
+                    self.video_analyzer.wait(2000)  # 等待2秒
+                
+                # 断开信号连接
+                try:
+                    self.video_analyzer.analysis_complete.disconnect()
+                except:
+                    pass  # 忽略断开连接错误
+                
+                self.video_analyzer = None
+                print("[AI控制器] AI分析器已停止")
+            
+            self.ai_enabled = False
+            self.analysis_results = {}
+            print("✓ AI分析功能已禁用")
+            
+        except Exception as e:
+            print(f"✗ 禁用AI分析时出错: {e}")
+            self.ai_enabled = False
             self.video_analyzer = None
-        
-        self.ai_enabled = False
-        print("✓ AI分析功能已禁用")
     
     def _on_camera_frame_for_ai(self, frame: np.ndarray):
         """摄像头帧回调（用于AI分析）"""

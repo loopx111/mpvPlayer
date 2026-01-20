@@ -47,7 +47,7 @@ class YOLOv5Detector:
         self.core_affinity = core_affinity
         
         # 模型配置 - 使用较小的输入尺寸以提高性能
-        self.input_size = (320, 320)  # 使用更小的输入尺寸提高性能
+        self.input_size = (160, 160)  # 使用更小的输入尺寸提高性能
         self.class_names = ['person']  # 只检测人员类别
         
         # 性能监控

@@ -1,0 +1,18 @@
+# AI模块专用依赖
+# 用于YOLOv5 ONNX模型推理和核心绑定
+
+# ONNX Runtime - CPU版本（兼容飞腾E2000）
+onnxruntime==1.16.0
+
+# 核心绑定和系统监控
+psutil==5.9.5
+
+# 图像处理增强（已包含在基础依赖中）
+# opencv-python==4.9.0.80
+
+# 数值计算（已包含在基础依赖中）
+# numpy>=1.21.0
+
+# 多线程支持（Python标准库）
+# threading
+# multiprocessing
