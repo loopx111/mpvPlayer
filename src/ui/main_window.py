@@ -252,11 +252,19 @@ class MainWindow(QtWidgets.QMainWindow):
         # 更新MQTT状态
         if self.mqtt and hasattr(self.mqtt, 'client'):
             mqtt_connected = self.mqtt.client.connected
-            self.mqtt_status.setText("已连接" if mqtt_connected else "未连接")
-            self.mqtt_status.setStyleSheet(f"color: {'green' if mqtt_connected else 'red'}; font-weight: bold;")
+            if mqtt_connected:
+                self.mqtt_status.setText("已连接")
+                self.mqtt_status.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                self.mqtt_status.setText("连接中...")
+                self.mqtt_status.setStyleSheet("color: orange; font-weight: bold;")
         else:
-            self.mqtt_status.setText("未启用")
-            self.mqtt_status.setStyleSheet("color: gray; font-weight: bold;")
+            if self.cfg.mqtt.enabled:
+                self.mqtt_status.setText("正在启动...")
+                self.mqtt_status.setStyleSheet("color: orange; font-weight: bold;")
+            else:
+                self.mqtt_status.setText("未启用")
+                self.mqtt_status.setStyleSheet("color: gray; font-weight: bold;")
         
         # 更新播放状态
         if self.player.current_process:

@@ -57,14 +57,14 @@ class MqttClient:
         def network_loop():
             while self._running:
                 try:
-                    self.log.info(f"尝试连接MQTT服务器: {self.cfg.host}:{self.cfg.port}")
+                    self.log.info(f"尝试连接MQTT服务器: {self.cfg.host}:{self.cfg.port}", "network_thread")
                     self.client.connect(self.cfg.host, self.cfg.port, keepalive=self.cfg.keepalive)
                     self.client.loop_forever()
                 except ConnectionRefusedError:
-                    self.log.error("MQTT连接被拒绝，请检查MQTT服务器是否运行")
+                    self.log.error("MQTT连接被拒绝，请检查MQTT服务器是否运行", "network_thread")
                     time.sleep(5)  # 延长等待时间
                 except Exception as e:
-                    self.log.error("MQTT网络线程异常: %s", e)
+                    self.log.error("MQTT网络线程异常", "network_thread", e)
                     if self._running:
                         time.sleep(1)  # 短暂等待后重试
 
@@ -77,13 +77,13 @@ class MqttClient:
             return
             
         if self._reconnect_attempts >= self._max_reconnect_attempts:
-            self.log.error("MQTT重连尝试次数已达上限，停止重连")
+            self.log.error("MQTT重连尝试次数已达上限，停止重连", "reconnect")
             return
 
         delay = self._reconnect_delay_base * (2 ** self._reconnect_attempts)  # 指数退避
         delay = min(delay, 60)  # 最大延迟60秒
         
-        self.log.info(f"MQTT将在{delay}秒后尝试重连（第{self._reconnect_attempts + 1}次）")
+        self.log.info(f"MQTT将在{delay}秒后尝试重连（第{self._reconnect_attempts + 1}次）", "reconnect")
         
         def delayed_reconnect():
             time.sleep(delay)
@@ -102,9 +102,9 @@ class MqttClient:
             try:
                 self.client.subscribe(topic, qos=0)
             except Exception as e:
-                self.log.error("订阅失败: %s", e)
+                self.log.error("订阅失败", "subscribe", e)
         else:
-            self.log.warning("订阅时未连接，连接后将自动订阅")
+            self.log.warning("订阅时未连接，连接后将自动订阅", "subscribe")
 
     def publish(self, topic: str, payload: Union[dict, str]) -> None:
         """发布消息，支持重连时消息缓存"""
@@ -115,15 +115,15 @@ class MqttClient:
             # 未连接时缓存消息
             try:
                 self._message_queue.put((topic, payload), timeout=1)
-                self.log.debug("消息已缓存（未连接）: %s", topic)
+                self.log.debug(f"消息已缓存（未连接）: {topic}", "publish")
             except queue.Full:
-                self.log.warning("消息队列已满，丢弃消息: %s", topic)
+                self.log.warning(f"消息队列已满，丢弃消息: {topic}", "publish")
             return
             
         try:
             self.client.publish(topic, payload=payload, qos=0)
         except Exception as e:
-            self.log.error("发布消息失败: %s", e)
+            self.log.error("发布消息失败", "publish", e)
 
     def _flush_message_queue(self) -> None:
         """清空消息队列"""
@@ -132,25 +132,36 @@ class MqttClient:
                 topic, payload = self._message_queue.get_nowait()
                 try:
                     self.client.publish(topic, payload=payload, qos=0)
-                    self.log.debug("已发送缓存消息: %s", topic)
+                    self.log.debug(f"已发送缓存消息: {topic}", "flush_queue")
                 except Exception as e:
-                    self.log.error("发送缓存消息失败: %s", e)
+                    self.log.error("发送缓存消息失败", "flush_queue", e)
             except queue.Empty:
                 break
 
     def _on_connect(self, client: mqtt.Client, userdata, flags, rc):
+        # MQTT连接结果代码说明
+        rc_messages = {
+            0: "连接成功",
+            1: "连接被拒绝 - 不支持的协议版本",
+            2: "连接被拒绝 - 客户端标识符无效",
+            3: "连接被拒绝 - 服务器不可用",
+            4: "连接被拒绝 - 错误的用户名或密码",
+            5: "连接被拒绝 - 未授权"
+        }
+        
         if rc == 0:
             self.connected = True
             self._reconnect_attempts = 0  # 重置重连计数
-            self.log.info("MQTT连接成功")
+            self.log.info(f"MQTT连接成功 - {self.cfg.host}:{self.cfg.port}", "connect")
             
             # 重新订阅所有主题
             with self._lock:
                 for topic in self.callbacks.keys():
                     try:
                         client.subscribe(topic, qos=0)
+                        self.log.debug(f"已订阅主题: {topic}", "subscribe")
                     except Exception as e:
-                        self.log.error("重新订阅失败: %s", e)
+                        self.log.error("重新订阅失败", "subscribe", e)
             
             # 发送缓存的消息
             self._flush_message_queue()
@@ -160,17 +171,18 @@ class MqttClient:
                 try:
                     self.on_connect_success()
                 except Exception as e:
-                    self.log.error("连接成功回调执行失败: %s", e)
+                    self.log.error("连接成功回调执行失败", "callback", e)
             
         else:
             self.connected = False
-            self.log.error("MQTT连接失败 rc=%s", rc)
+            error_msg = rc_messages.get(rc, f"未知错误代码: {rc}")
+            self.log.error(f"MQTT连接失败 - {error_msg} (rc={rc})", "connect")
             self._schedule_reconnect()
 
     def _on_message(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
         payload = msg.payload.decode("utf-8", errors="ignore")
         topic = msg.topic
-        self.log.debug(f"MQTT消息 {topic} {payload}")
+        self.log.debug(f"MQTT消息 {topic} {payload}", "message_received")
         with self._lock:
             cbs = list(self.callbacks.get(topic, []))
         
@@ -180,7 +192,7 @@ class MqttClient:
                 try:
                     cb(topic, payload)
                 except Exception as exc:
-                    self.log.exception("消息回调错误: %s", exc)
+                    self.log.error("消息回调错误", "callback", exc)
         
         callback_thread = threading.Thread(target=handle_callbacks, daemon=True)
         callback_thread.start()
@@ -188,8 +200,8 @@ class MqttClient:
     def _on_disconnect(self, client: mqtt.Client, userdata, rc):
         self.connected = False
         if rc == 0:
-            self.log.info("MQTT正常断开连接")
+            self.log.info("MQTT正常断开连接", "disconnect")
         else:
-            self.log.warning("MQTT意外断开连接 rc=%s", rc)
+            self.log.warning(f"MQTT意外断开连接 rc={rc}", "disconnect")
             if self._running:
                 self._schedule_reconnect()

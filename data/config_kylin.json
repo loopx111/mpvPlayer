@@ -1,8 +1,8 @@
 {
   "mqtt": {
-    "host": "192.168.3.55",
+    "host": "192.168.30.55",
     "port": 1883,
-    "clientId": "kylin_001",
+    "clientId": "mpv-player-001",
     "username": "baicells",
     "password": "BlTf129",
     "keepalive": 60,
@@ -16,14 +16,7 @@
     "path": "/opt/mpvPlayer/data/downloads",
     "maxConcurrent": 3,
     "retryLimit": 3,
-    "retryBackoff": [
-      1,
-      2,
-      4,
-      8,
-      16,
-      30
-    ],
+    "retryBackoff": [1, 2, 4, 8, 16, 30],
     "extractDefault": false
   },
   "player": {
@@ -35,10 +28,10 @@
     "preloadNext": false
   },
   "system": {
-    "devicePath": "设备/麒麟系统",
+    "devicePath": "设备/默认",
     "enableAutoRestart": false,
     "logLevel": "INFO",
-    "logPath": "/var/log/mpvPlayer",
+    "logPath": "",
     "autostart": false
   }
 }

@@ -89,11 +89,11 @@ class VideoAnalyzer(QThread):
                 
                 # 执行AI分析
                 if frame is not None and frame.size > 0:
-                    print(f"[AI分析器] 接收到新帧，尺寸: {frame.shape}")
+                    # print(f"[AI分析器] 接收到新帧，尺寸: {frame.shape}")  # 注释频繁日志
                     analysis_result = self._analyze_frame(frame)
                     
                     # 发送分析结果
-                    print(f"[AI分析器] 分析完成，发送结果: {analysis_result.get('detection_result').person_count}人")
+                    # print(f"[AI分析器] 分析完成，发送结果: {analysis_result.get('detection_result').person_count}人")  # 注释频繁日志
                     self.analysis_complete.emit(analysis_result)
                     
                     # 更新性能统计
@@ -114,13 +114,15 @@ class VideoAnalyzer(QThread):
     
     def _analyze_frame(self, frame: np.ndarray) -> Dict:
         """分析单帧图像"""
-        print(f"[AI分析器] 开始分析第 {self.analysis_count + 1} 帧")
+        # print(f"[AI分析器] 开始分析第 {self.analysis_count + 1} 帧")  # 注释频繁日志
         
         # 执行YOLOv5人数检测
         detection_result = self.detector.detect_people(frame)
         
-        print(f"[AI分析器] 检测结果: {detection_result.person_count} 人")
-        print(f"[AI分析器] 检测框坐标: {detection_result.detections}")
+        # 每10帧打印一次检测结果，避免过于频繁
+        if self.analysis_count % 10 == 0:
+            print(f"[AI分析器] 检测结果: {detection_result.person_count} 人")
+            # print(f"[AI分析器] 检测框坐标: {detection_result.detections}")  # 注释详细坐标
         
         # 更新人数统计
         count_update = self.people_counter.update_count(
@@ -134,7 +136,9 @@ class VideoAnalyzer(QThread):
         # 性能信息
         detector_stats = self.detector.get_performance_stats()
         
-        print(f"[AI分析器] 性能统计: FPS={round(1000 / detector_stats['avg_inference_time_ms'], 2)}, 延迟={detector_stats['avg_inference_time_ms']}ms")
+        # 每30帧打印一次性能统计
+        if self.analysis_count % 30 == 0:
+            print(f"[AI分析器] 性能统计: FPS={round(1000 / detector_stats['avg_inference_time_ms'], 2)}, 延迟={detector_stats['avg_inference_time_ms']}ms")
         
         return {
             'detection_result': detection_result,
@@ -455,17 +459,18 @@ class AICameraController(CameraController):
     
     def _on_camera_frame_for_ai(self, frame: np.ndarray):
         """摄像头帧回调（用于AI分析）"""
-        print("[帧回调] 摄像头帧回调被调用，帧: {}, AI启用: {}, 分析器: {}, 运行中: {}".format(
-            "有效" if frame is not None and frame.size > 0 else "无效",
-            self.ai_enabled,
-            "存在" if self.video_analyzer else "不存在",
-            self.video_analyzer.isRunning() if self.video_analyzer else False
-        ))
+        # 注释频繁的帧回调日志
+        # print("[帧回调] 摄像头帧回调被调用，帧: {}, AI启用: {}, 分析器: {}, 运行中: {}".format(
+        #     "有效" if frame is not None and frame.size > 0 else "无效",
+        #     self.ai_enabled,
+        #     "存在" if self.video_analyzer else "不存在",
+        #     self.video_analyzer.isRunning() if self.video_analyzer else False
+        # ))
         
         if self.ai_enabled and self.video_analyzer and self.video_analyzer.isRunning():
             # 确保帧有效
             if frame is not None and frame.size > 0:
-                print("[帧回调] 接收到新帧，尺寸: {}，准备传递给AI分析器".format(frame.shape))
+                # print("[帧回调] 接收到新帧，尺寸: {}，准备传递给AI分析器".format(frame.shape))  # 注释频繁日志
                 self.video_analyzer.update_frame(frame)
                 
                 # 调试信息：显示帧更新频率
@@ -477,10 +482,10 @@ class AICameraController(CameraController):
                     if frame_interval > 1.0:  # 超过1秒没有帧更新
                         print("[帧回调] 帧更新间隔: {:.2f}s (可能太慢)".format(frame_interval))
                     self._last_frame_time = current_time
-            else:
-                print("[帧回调] 接收到无效帧，跳过")
-        else:
-            print("[帧回调] 条件不满足，跳过帧处理")
+            # else:
+            #     print("[帧回调] 接收到无效帧，跳过")  # 注释频繁日志
+        # else:
+        #     print("[帧回调] 条件不满足，跳过帧处理")  # 注释频繁日志
     
     def _on_analysis_complete(self, analysis_result: Dict):
         """AI分析完成回调"""

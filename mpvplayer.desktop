@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=MPV Player
+Comment=基于MPV的广告屏播放器，支持AI人数识别
+Exec=sh -c "cd ~/下载/mpvPlayer && ./start_kylin_desktop.sh"
+Icon=video-x-generic
+Categories=AudioVideo;Player;
+Terminal=false
+StartupNotify=true
+X-KDE-SubstituteUID=false

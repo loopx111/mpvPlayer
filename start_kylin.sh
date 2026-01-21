@@ -76,21 +76,21 @@ mkdir -p /opt/mpvPlayer/data/videos
 mkdir -p /opt/mpvPlayer/data/downloads
 mkdir -p /opt/mpvPlayer/data/logs
 
-# 创建Kylin专用的配置文件
+# 确保Kylin专用的配置文件存在且格式正确
 if [ ! -f "$KYLIN_CONFIG_FILE" ]; then
     echo "创建Kylin专用配置文件..."
     cat > "$KYLIN_CONFIG_FILE" << EOF
 {
   "mqtt": {
-    "host": "127.0.0.1",
+    "host": "192.168.30.55",
     "port": 1883,
-    "clientId": "mpv-player",
-    "username": "",
-    "password": "",
+    "clientId": "mpv-player-001",
+    "username": "baicells",
+    "password": "BlTf129",
     "keepalive": 60,
     "cleanSession": true,
     "enabled": true,
-    "devicePath": "设备/默认",
+    "devicePath": "设备/区域/南京/鼓楼",
     "statusReportInterval": 30000,
     "heartbeatInterval": 15000
   },
@@ -126,6 +126,61 @@ if [ ! -f "$KYLIN_CONFIG_FILE" ]; then
 }
 EOF
     echo "Kylin配置文件已创建: $KYLIN_CONFIG_FILE"
+else
+    # 验证配置文件格式是否正确
+    if ! python3 -m json.tool "$KYLIN_CONFIG_FILE" > /dev/null 2>&1; then
+        echo "警告: 配置文件格式错误，将重新创建..."
+        rm "$KYLIN_CONFIG_FILE"
+        cat > "$KYLIN_CONFIG_FILE" << EOF
+{
+  "mqtt": {
+    "host": "192.168.30.55",
+    "port": 1883,
+    "clientId": "mpv-player-001",
+    "username": "baicells",
+    "password": "BlTf129",
+    "keepalive": 60,
+    "cleanSession": true,
+    "enabled": true,
+    "devicePath": "设备/区域/南京/鼓楼",
+    "statusReportInterval": 30000,
+    "heartbeatInterval": 15000
+  },
+  "download": {
+    "path": "/opt/mpvPlayer/data/downloads",
+    "maxConcurrent": 3,
+    "retryLimit": 3,
+    "retryBackoff": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      30
+    ],
+    "extractDefault": false
+  },
+  "player": {
+    "videoPath": "/opt/mpvPlayer/data/videos",
+    "autoPlay": true,
+    "loop": true,
+    "showControls": true,
+    "volume": 70,
+    "preloadNext": false
+  },
+  "system": {
+    "devicePath": "设备/默认",
+    "enableAutoRestart": false,
+    "logLevel": "INFO",
+    "logPath": "",
+    "autostart": false
+  }
+}
+EOF
+        echo "Kylin配置文件已重新创建: $KYLIN_CONFIG_FILE"
+    else
+        echo "使用现有配置文件: $KYLIN_CONFIG_FILE"
+    fi
 fi
 
 # 设置显示环境变量
