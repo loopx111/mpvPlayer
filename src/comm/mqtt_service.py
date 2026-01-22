@@ -97,6 +97,199 @@ class MqttService:
             return True
         return False
     
+    def _handle_playlist_distribution(self, data: Dict) -> bool:
+        """处理播放列表分发消息"""
+        # 检查是否为播放列表分发消息
+        if data.get("type") == "playlist" and data.get("operation") == "playlist-distribution":
+            files = data.get("files", [])
+            mode = data.get("mode", "immediate")
+            schedule_time = data.get("scheduleTime")
+            
+            self.log.info(f"收到播放列表分发消息，模式: {mode}, 文件数量: {len(files)}")
+            
+            if not files:
+                self.log.warning("播放列表消息中没有文件列表")
+                return True
+            
+            # 在后台线程中处理播放列表分发
+            threading.Thread(target=self._process_playlist_distribution, 
+                           args=(files, mode, schedule_time), daemon=True).start()
+            
+            # 发布播放列表更新状态
+            self.publish_status({
+                "type": "playlist_distribution",
+                "status": "processing",
+                "file_count": len(files),
+                "mode": mode
+            })
+            
+            return True
+        return False
+    
+    def _process_playlist_distribution(self, files: List[Dict], mode: str, schedule_time: Optional[str]) -> None:
+        """处理播放列表分发"""
+        try:
+            # 获取播放器实例（通过回调或全局变量）
+            player = self._get_player_instance()
+            if not player:
+                self.log.error("无法获取播放器实例，无法处理播放列表分发")
+                return
+            
+            # 获取播放目录和下载目录
+            video_path = self.cfg.player.videoPath
+            download_path = self.cfg.download.path
+            
+            self.log.info(f"开始处理播放列表分发，播放目录: {video_path}, 下载目录: {download_path}")
+            
+            # 1. 查询当前播放目录中的所有文件
+            current_files = self._get_current_playlist_files(video_path)
+            self.log.info(f"当前播放目录中有 {len(current_files)} 个文件")
+            
+            # 2. 根据消息中的文件列表，删除不需要的文件
+            self._cleanup_playlist_files(current_files, files, video_path)
+            
+            # 3. 拷贝缺失的文件到播放目录
+            self._copy_missing_files(files, video_path, download_path)
+            
+            # 4. 更新播放列表并重新开始播放
+            self._update_playlist_and_restart(player, video_path, mode)
+            
+            # 发布完成状态
+            self.publish_status({
+                "type": "playlist_distribution",
+                "status": "completed",
+                "file_count": len(files),
+                "mode": mode
+            })
+            
+        except Exception as e:
+            self.log.error(f"处理播放列表分发时出错: {e}")
+            # 发布错误状态
+            self.publish_status({
+                "type": "playlist_distribution",
+                "status": "error",
+                "error": str(e)
+            })
+    
+    def set_player_instance(self, player):
+        """设置播放器实例"""
+        self.player_instance = player
+        self.log.info("播放器实例已设置到MQTT服务")
+    
+    def _get_player_instance(self):
+        """获取播放器实例"""
+        return getattr(self, 'player_instance', None)
+    
+    def _get_current_playlist_files(self, video_path: str) -> List[str]:
+        """获取当前播放目录中的所有文件"""
+        try:
+            from pathlib import Path
+            video_dir = Path(video_path)
+            
+            if not video_dir.exists():
+                self.log.warning(f"播放目录不存在: {video_path}")
+                return []
+            
+            # 支持的视频格式
+            supported_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
+            
+            # 查找所有视频文件
+            video_files = []
+            for file_path in video_dir.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in supported_formats:
+                    video_files.append(file_path.name)
+            
+            return video_files
+            
+        except Exception as e:
+            self.log.error(f"获取当前播放列表文件时出错: {e}")
+            return []
+    
+    def _cleanup_playlist_files(self, current_files: List[str], target_files: List[Dict], video_path: str) -> None:
+        """清理播放列表文件，删除不需要的文件"""
+        try:
+            from pathlib import Path
+            video_dir = Path(video_path)
+            
+            if not video_dir.exists():
+                return
+            
+            # 提取目标文件名列表
+            target_file_names = [file_info.get("name") for file_info in target_files]
+            
+            # 删除不需要的文件
+            for current_file in current_files:
+                if current_file not in target_file_names:
+                    file_to_delete = video_dir / current_file
+                    if file_to_delete.exists():
+                        file_to_delete.unlink()
+                        self.log.info(f"删除不需要的文件: {current_file}")
+            
+            self.log.info("播放列表文件清理完成")
+            
+        except Exception as e:
+            self.log.error(f"清理播放列表文件时出错: {e}")
+    
+    def _copy_missing_files(self, target_files: List[Dict], video_path: str, download_path: str) -> None:
+        """拷贝缺失的文件到播放目录"""
+        try:
+            from pathlib import Path
+            import shutil
+            
+            video_dir = Path(video_path)
+            download_dir = Path(download_path)
+            
+            # 确保播放目录存在
+            video_dir.mkdir(parents=True, exist_ok=True)
+            
+            if not download_dir.exists():
+                self.log.warning(f"下载目录不存在: {download_path}")
+                return
+            
+            # 拷贝缺失的文件
+            for file_info in target_files:
+                file_name = file_info.get("name")
+                if not file_name:
+                    continue
+                
+                # 检查播放目录中是否已存在该文件
+                target_file = video_dir / file_name
+                if target_file.exists():
+                    self.log.info(f"文件已存在，跳过拷贝: {file_name}")
+                    continue
+                
+                # 在下载目录中查找文件
+                source_file = download_dir / file_name
+                if source_file.exists():
+                    # 拷贝文件到播放目录
+                    shutil.copy2(source_file, target_file)
+                    self.log.info(f"拷贝文件到播放目录: {file_name}")
+                else:
+                    self.log.warning(f"文件在下载目录中不存在: {file_name}")
+            
+            self.log.info("文件拷贝完成")
+            
+        except Exception as e:
+            self.log.error(f"拷贝文件时出错: {e}")
+    
+    def _update_playlist_and_restart(self, player, video_path: str, mode: str) -> None:
+        """更新播放列表并重新开始播放"""
+        try:
+            # 如果模式是immediate，停止当前播放
+            if mode == "immediate":
+                if hasattr(player, 'stop_play'):
+                    player.stop_play()
+            
+            # 重新设置播放目录（这会自动重新开始播放）
+            if hasattr(player, 'set_playlist_dir'):
+                player.set_playlist_dir(video_path, use_playlist_mode=True)
+                self.log.info("播放列表已更新")
+                
+            # 移除多余的播放重启逻辑，因为set_playlist_dir已经包含了播放逻辑
+            
+        except Exception as e:
+            self.log.error(f"更新播放列表时出错: {e}")
+    
     def _add_async_download_task(self, file_info: Dict) -> None:
         """异步添加下载任务"""
         try:
@@ -162,6 +355,10 @@ class MqttService:
             
         # 检查是否为文件分发消息
         if self._handle_file_distribution(data):
+            return
+            
+        # 检查是否为播放列表分发消息
+        if self._handle_playlist_distribution(data):
             return
             
         # 处理普通命令
