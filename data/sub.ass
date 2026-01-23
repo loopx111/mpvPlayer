@@ -1,0 +1,17 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: SingleLineStyle,WenQuanYi Micro Hei,36,&H00FFFFFF,&H000000FF,&H00000000,&H801E90FF,1,0,0,0,100,100,5,0,1,2,1,7,0,0,0,134
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+# 第一遍
+Dialogue: 0,0:00:00.00,0:00:25.00,SingleLineStyle,,0,0,0,,{\move(1900,2000,1900,-1000)\an7\fr270}电梯安全系万家 规范使用靠大家 门缝莫伸手 轿厢禁蹦跳 安全乘梯从小事做起 遇险莫慌张 警铃电话能救命 安全标识要记牢
+# 间隔5秒
+# 第二遍
+Dialogue: 0,0:00:30.00,0:00:55.00,SingleLineStyle,,0,0,0,,{\move(1900,2000,1900,-1000)\an7\fr270}电梯安全系万家 规范使用靠大家 门缝莫伸手 轿厢禁蹦跳 安全乘梯从小事做起 遇险莫慌张 警铃电话能救命 安全标识要记牢

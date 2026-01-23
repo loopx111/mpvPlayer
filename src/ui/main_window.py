@@ -749,4 +749,11 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             print(f"关闭摄像头错误: {e}")
         
+        # 停止MPV广告
+        try:
+            if hasattr(self, 'player'):
+                self.player.stop_ad_overlay()
+        except Exception as e:
+            print(f"停止MPV广告错误: {e}")
+        
         event.accept()

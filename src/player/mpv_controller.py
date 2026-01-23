@@ -50,6 +50,8 @@ class MpvController:
         
         # 支持的视频格式
         self.supported_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
+        
+
 
     def _init_playlist(self, video_path: str) -> None:
         """在后台线程中初始化播放列表"""
@@ -313,6 +315,20 @@ class MpvController:
             "--input-default-bindings=yes"
         ]
         
+        # 添加字幕选项
+        # 根据操作系统选择合适的字幕文件路径
+        if platform.system().lower() == "linux":
+            subtitle_file = Path("/opt/mpvPlayer/data/sub.ass")
+        else:
+            subtitle_file = Path("data/sub.ass")
+        
+        if subtitle_file.exists():
+            cmd.extend([
+                f"--sub-file={subtitle_file.as_posix()}",
+                "--sub-ass=yes",
+                "--sub-visibility=yes"
+            ])
+        
         # 麒麟系统特定设置：禁用问题解码器，使用软件解码
         if platform.system().lower() == "linux":
             cmd.extend([
@@ -333,6 +349,20 @@ class MpvController:
             f"--cursor-autohide={3000}",
             "--input-default-bindings=yes"
         ]
+        
+        # 添加字幕选项
+        # 根据操作系统选择合适的字幕文件路径
+        if platform.system().lower() == "linux":
+            subtitle_file = Path("/opt/mpvPlayer/data/sub.ass")
+        else:
+            subtitle_file = Path("data/sub.ass")
+        
+        if subtitle_file.exists():
+            cmd.extend([
+                f"--sub-file={subtitle_file.as_posix()}",
+                "--sub-ass=yes",
+                "--sub-visibility=yes"
+            ])
         
         # 麒麟系统特定设置：禁用问题解码器，使用软件解码
         if platform.system().lower() == "linux":
