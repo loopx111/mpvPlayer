@@ -59,6 +59,9 @@ class CameraThread(QThread):
                 
                 ret, frame = self.cap.read()
                 if ret:
+                    # 修正摄像头倒置问题 - 垂直翻转
+                    frame = cv2.flip(frame, 0)
+                    
                     # 转换为RGB格式用于显示
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     # print(f"[摄像头线程] 读取到新帧，尺寸: {frame_rgb.shape}，准备发送信号...")  # 注释频繁日志
