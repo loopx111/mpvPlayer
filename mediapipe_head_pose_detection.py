@@ -235,14 +235,23 @@ def main():
             color = (255, 0, 0)  # 红色表示无检测
             status_text = "No Face Detected"
         
-        # 绘制姿态信息
-        cv2.putText(frame_flipped, f"{status_text}", (10, 30), 
+        # 水平镜像翻转：解决摄像头镜像问题
+        # 当你的头往左歪时，画面中也会显示往左歪
+        display_frame = cv2.flip(frame_flipped, 1)
+        
+        # 在镜像后的帧上绘制检测信息（避免文字镜像）
+        h, w = display_frame.shape[:2]
+        
+        # 计算文字在镜像后的位置（右侧显示）
+        text_x = w - 200  # 从右侧开始计算位置
+        
+        cv2.putText(display_frame, f"{status_text}", (text_x, 30), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-        cv2.putText(frame_flipped, f"Yaw: {yaw:.1f}°", (10, 60), 
+        cv2.putText(display_frame, f"Yaw: {yaw:.1f}°", (text_x, 60), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-        cv2.putText(frame_flipped, f"Pitch: {pitch:.1f}°", (10, 80), 
+        cv2.putText(display_frame, f"Pitch: {pitch:.1f}°", (text_x, 80), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-        cv2.putText(frame_flipped, f"Roll: {roll:.1f}°", (10, 100), 
+        cv2.putText(display_frame, f"Roll: {roll:.1f}°", (text_x, 100), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         
         # 显示统计信息
@@ -251,14 +260,14 @@ def main():
         avg_inference = np.mean(inference_times[-30:]) if len(inference_times) > 0 else 0
         gaze_ratio = gaze_count / (frame_count // 30) * 100 if frame_count >= 30 else 0
         
-        cv2.putText(frame_flipped, f"FPS: {int(fps)}", (10, 130), 
+        cv2.putText(display_frame, f"FPS: {int(fps)}", (text_x, 130), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-        cv2.putText(frame_flipped, f"Inference: {inference_time:.1f}ms", (10, 150), 
+        cv2.putText(display_frame, f"Inference: {inference_time:.1f}ms", (text_x, 150), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
-        cv2.putText(frame_flipped, f"Gaze Ratio: {gaze_ratio:.1f}%", (10, 170), 
+        cv2.putText(display_frame, f"Gaze Ratio: {gaze_ratio:.1f}%", (text_x, 170), 
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         
-        cv2.imshow('MediaPipe Head Pose Detection', frame_flipped)
+        cv2.imshow('MediaPipe Head Pose Detection', display_frame)
         
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
