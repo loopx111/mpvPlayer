@@ -67,12 +67,8 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         """处理摄像头帧"""
         try:
             # 使用嵌入式检测器处理帧
-            results, frame_flipped = self.detector.process_frame(frame)
-            
-            # 绘制结果
-            display_frame = self.detector.draw_results(
-                frame_flipped, results, self.detector.detection_results['face_positions']
-            )
+            results, display_frame = self.detector.process_frame(frame)
+            # 注意：process_frame已经包含了绘制，无需再次调用draw_results
             
             # 输出检测信息到控制台
             self.detector.print_detection_info()
@@ -145,6 +141,8 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
         self.analysis_enabled = True
         # 帧号计数器
         self.frame_counter = 0
+        # 性能优化标志
+        self.enable_controller_debug = False  # 关闭控制器调试日志
         print(f"摄像头线程初始化，分析功能状态: {self.analysis_enabled}")
     
     def run(self):
@@ -187,43 +185,40 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                 ret, frame = self.cap.read()
                 if ret:
                     self.frame_counter += 1
-                    print(f"帧{self.frame_counter} - 读取原始帧: shape={frame.shape}")
+                    if self.enable_controller_debug:
+                        print(f"帧{self.frame_counter} - 读取原始帧: shape={frame.shape}")
                     
                     if self.analysis_enabled:
-                        print(f"帧{self.frame_counter} - 检测路径: analysis_enabled={self.analysis_enabled}, 调用检测器")
+                        if self.enable_controller_debug:
+                            print(f"帧{self.frame_counter} - 检测路径: analysis_enabled={self.analysis_enabled}, 调用检测器")
                         # 使用嵌入式检测器处理帧
                         try:
-                            results, frame_flipped = self.detector.process_frame(frame, self.frame_counter)
-                            
-                            # 绘制结果
-                            display_frame = self.detector.draw_results(
-                                frame_flipped, results, self.detector.detection_results['face_positions']
-                            )
+                            results, display_frame = self.detector.process_frame(frame, self.frame_counter)
+                            # 注意：process_frame已经包含了绘制，无需再次调用draw_results
                             
                             # 转换为RGB格式用于显示
                             frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
                             self.frame_processed.emit(frame_rgb)
                             
                         except Exception as e:
-                            print(f"帧{self.frame_counter} - 检测处理失败: {e}")
+                            if self.enable_controller_debug:
+                                print(f"帧{self.frame_counter} - 检测处理失败: {e}")
                             # 失败时也需要进行正确的翻转，确保画面方向一致
                             frame_flipped = cv2.flip(frame, 0)  # 垂直翻转
-                            print(f"帧{self.frame_counter} - 异常路径 - 垂直翻转+1: frame.shape={frame.shape} -> frame_flipped.shape={frame_flipped.shape}")
                             display_frame = cv2.flip(frame_flipped, 1)  # 水平镜像
-                            print(f"帧{self.frame_counter} - 异常路径 - 水平镜像+1: frame_flipped.shape={frame_flipped.shape} -> display_frame.shape={display_frame.shape}")
                             frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
                             self.frame_processed.emit(frame_rgb)
                     else:
-                        print(f"帧{self.frame_counter} - 未检测路径: analysis_enabled={self.analysis_enabled}, 仅进行基础翻转")
+                        if self.enable_controller_debug:
+                            print(f"帧{self.frame_counter} - 未检测路径: analysis_enabled={self.analysis_enabled}, 仅进行基础翻转")
                         # 未启用检测时也需要进行正确的翻转，确保画面方向一致
                         frame_flipped = cv2.flip(frame, 0)  # 垂直翻转
-                        print(f"帧{self.frame_counter} - 未检测路径 - 垂直翻转+1: frame.shape={frame.shape} -> frame_flipped.shape={frame_flipped.shape}")
                         display_frame = cv2.flip(frame_flipped, 1)  # 水平镜像
-                        print(f"帧{self.frame_counter} - 未检测路径 - 水平镜像+1: frame_flipped.shape={frame_flipped.shape} -> display_frame.shape={display_frame.shape}")
                         frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
                         self.frame_processed.emit(frame_rgb)
                 else:
-                    print(f"帧{self.frame_counter} - 读取帧失败，ret=", ret)
+                    if self.enable_controller_debug:
+                        print(f"帧{self.frame_counter} - 读取帧失败，ret=", ret)
                 
                 # 控制帧率
                 elapsed = (time.time() - start_time) * 1000

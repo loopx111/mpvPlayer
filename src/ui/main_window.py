@@ -6,7 +6,7 @@ from ..comm.mqtt_service import MqttService
 from ..file_dist.manager import DownloadManager
 from ..player.mpv_controller import MpvController
 from ..player.camera_controller import CameraController
-from ..camera.camera_capture import AICameraController
+from ..camera.embedded_mediapipe_controller import EmbeddedMediaPipeCameraController
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -17,8 +17,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.downloader = downloader
         self.player = player
         
-        # 初始化AI摄像头控制器
-        self.camera_controller = AICameraController()
+        # 初始化嵌入式MediaPipe摄像头控制器
+        self.camera_controller = EmbeddedMediaPipeCameraController()
         
         self.setWindowTitle("广告屏播放器控制台")
         self.resize(1200, 800)
@@ -145,61 +145,19 @@ class MainWindow(QtWidgets.QMainWindow):
         camera_layout.addLayout(control_layout)
         camera_layout.addWidget(self.camera_status)
         
-        # 创建摄像头显示区域（先创建占位符，稍后更新）
+        # 创建摄像头显示区域（与测试脚本保持一致，640x480）
         self.camera_display_area = QtWidgets.QWidget()
         camera_display_layout = QtWidgets.QVBoxLayout()
         self.camera_display_area.setLayout(camera_display_layout)
-        self.camera_display_area.setMinimumSize(320, 240)
+        self.camera_display_area.setMinimumSize(640, 480)
         camera_layout.addWidget(self.camera_display_area)
         
         camera_group.setLayout(camera_layout)
-        
-        # AI分析结果显示区域（独立于摄像头画面）
-        ai_analysis_group = QtWidgets.QGroupBox("AI分析结果")
-        ai_layout = QtWidgets.QVBoxLayout()
-        
-        # 分析结果状态标签
-        self.ai_status_label = QtWidgets.QLabel("AI分析未启用")
-        self.ai_status_label.setStyleSheet("color: gray; font-weight: bold;")
-        ai_layout.addWidget(self.ai_status_label)
-        
-        # 分析结果详细信息区域
-        self.ai_results_text = QtWidgets.QTextEdit()
-        self.ai_results_text.setReadOnly(True)
-        self.ai_results_text.setMaximumHeight(120)
-        self.ai_results_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 4px;
-                padding: 5px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 10px;
-            }
-        """)
-        self.ai_results_text.setPlainText("等待AI分析结果...")
-        ai_layout.addWidget(self.ai_results_text)
-        
-        # 性能统计信息
-        performance_layout = QtWidgets.QHBoxLayout()
-        
-        self.fps_label = QtWidgets.QLabel("FPS: --")
-        self.latency_label = QtWidgets.QLabel("延迟: --")
-        self.analysis_count_label = QtWidgets.QLabel("分析次数: --")
-        
-        performance_layout.addWidget(self.fps_label)
-        performance_layout.addWidget(self.latency_label)
-        performance_layout.addWidget(self.analysis_count_label)
-        performance_layout.addStretch(1)
-        
-        ai_layout.addLayout(performance_layout)
-        ai_analysis_group.setLayout(ai_layout)
         
         layout.addWidget(sys_group)
         layout.addWidget(play_group)
         layout.addWidget(download_group)
         layout.addWidget(camera_group)
-        layout.addWidget(ai_analysis_group)
         layout.addStretch(1)
         
         panel.setLayout(layout)
@@ -351,7 +309,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
         return ""
     
-    def get_current_file_info(self) -> dict:
+    def get_current_file_info(self):
         """获取当前播放文件信息（用于MQTT状态报告）"""
         info = {
             "current_file": "",
@@ -381,20 +339,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def _setup_camera(self):
         """初始化摄像头设置"""
         try:
-            # 初始化AI摄像头控制器（默认使用摄像头2并启用AI分析）
+            # 初始化MediaPipe摄像头控制器（默认使用摄像头2并启用人脸检测）
             success = self.camera_controller.initialize(
                 camera_index=2,  # 默认使用摄像头2
                 resolution=(640, 480), 
                 fps=15,
-                enable_ai=True,  # 启用AI分析
-                model_path="models/yolov5s.onnx"  # AI模型路径
+                enable_face_detection=True  # 启用人脸检测
             )
             
             if success:
-                print("摄像头控制器初始化成功")
+                print("MediaPipe摄像头控制器初始化成功")
                 
-                # 设置分析结果回调函数
-                self.camera_controller.set_analysis_callback(self._on_analysis_result)
+
                 
                 # 更新设备选择框
                 self._update_camera_device_list()
@@ -510,8 +466,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.camera_status.setText("摄像头设备已切换")
                     self.camera_status.setStyleSheet("color: green; font-weight: bold;")
                     
-                    # 重新设置分析结果回调
-                    self.camera_controller.set_analysis_callback(self._on_analysis_result)
+
                     
                     # 如果之前启用了AI分析，重新启用
                     if ai_was_enabled:
@@ -686,7 +641,7 @@ class MainWindow(QtWidgets.QMainWindow):
             print(f"切换AI分析功能错误: {e}")
             self.camera_status.setText(f"AI分析错误: {e}")
     
-    def _on_analysis_result(self, analysis_result: dict):
+    def _on_analysis_result(self, analysis_result):
         """AI分析结果回调函数"""
         try:
             # 更新分析结果状态
@@ -731,7 +686,7 @@ class MainWindow(QtWidgets.QMainWindow):
             print(f"更新AI分析结果时出错: {e}")
             self.ai_results_text.setPlainText(f"更新结果时出错: {e}")
     
-    def update_ai_analysis_result(self, analysis_info: dict):
+    def update_ai_analysis_result(self, analysis_info):
         """更新AI分析结果显示（兼容性方法，实际使用_on_analysis_result）"""
         try:
             # 直接调用新的回调方法

@@ -21,12 +21,17 @@ class EmbeddedMediaPipeDetector:
     def __init__(self):
         self.mp_face_mesh = mp.solutions.face_mesh
         self.mp_drawing = mp.solutions.drawing_utils
+        
+        # 性能优化配置：降低检测精度，提高处理速度
         self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=5,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
+            max_num_faces=3,  # 减少最大人脸数量
+            refine_landmarks=False,  # 关闭精细关键点（提高性能）
+            min_detection_confidence=0.3,  # 降低检测阈值
+            min_tracking_confidence=0.3   # 降低跟踪阈值
         )
+        
+        # 性能优化标志
+        self.enable_debug_logs = False  # 关闭调试日志提高性能
         
         # 检测结果存储
         self.detection_results = {
@@ -141,6 +146,7 @@ class EmbeddedMediaPipeDetector:
     
     def smart_draw_landmarks(self, frame, face_landmarks, face_count, face_index, is_gazing):
         """智能绘制人脸关键点"""
+        print(f"[smart_draw_landmarks] 绘制人脸{face_index}，共{face_count}张人脸")
         h, w = frame.shape[:2]
         
         # 统一使用灰色线条
@@ -154,14 +160,31 @@ class EmbeddedMediaPipeDetector:
         y_min, y_max = min(y_coords), max(y_coords)
         
         if face_count <= 2:
-            # 详细绘制
-            self.mp_drawing.draw_landmarks(
-                frame,
-                face_landmarks,
-                self.mp_face_mesh.FACEMESH_TESSELATION,
-                landmark_drawing_spec=self.mp_drawing.DrawingSpec(color=gray_color, thickness=1, circle_radius=1),
-                connection_drawing_spec=self.mp_drawing.DrawingSpec(color=gray_color, thickness=1)
-            )
+            # 优化绘制：只绘制关注识别所需的6个关键点
+            important_landmarks = [1, 33, 263, 61, 291, 199]  # 鼻尖、眼角、嘴角、下巴
+            for idx in important_landmarks:
+                landmark = face_landmarks.landmark[idx]
+                x = int(landmark.x * w)
+                y = int(landmark.y * h)
+                cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)  # 绘制绿色小圆点
+            
+            # 绘制关注状态和绿色编号
+            if is_gazing:
+                # 根据人脸数量选择编号位置
+                if face_count <= 2:
+                    # 1-2张人脸：放在关键点图形右上角
+                    text_x_pos = x_max - 20
+                    text_y_pos = y_min + 30
+                else:
+                    # 3张及以上人脸：放在边界框左上角
+                    text_x_pos = x_min + 5
+                    text_y_pos = y_min - 5
+                
+                # 绘制绿色数字编号
+                face_num = face_index + 1
+                cv2.putText(frame, f"{face_num}", 
+                           (text_x_pos, text_y_pos), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)  # 绿色编号
         else:
             # 简化绘制
             self.mp_drawing.draw_landmarks(
@@ -186,7 +209,7 @@ class EmbeddedMediaPipeDetector:
         }
     
     class FrameSkipOptimizer:
-        """智能帧跳过策略优化器"""
+        """智能帧跳过策略优化器 - 性能优化版本"""
         
         def __init__(self):
             self.frame_skip_counter = 0
@@ -198,35 +221,30 @@ class EmbeddedMediaPipeDetector:
             self.skip_stats = {"total_frames": 0, "skipped_frames": 0, "detected_frames": 0}
         
         def get_max_skip_frames(self, face_count):
-            """根据人脸数量动态确定最大跳过帧数"""
+            """根据人脸数量动态确定最大跳过帧数 - 优化无人脸跳过策略"""
             if face_count == 0:
-                return 0  # 无人脸时不跳过
+                return 15  # 无人脸时最多跳过15帧（大幅提升性能）
             elif face_count == 1:
-                return 1  # 单人脸时最多跳过1帧
+                return 3  # 单人脸时最多跳过3帧
             elif face_count == 2:
-                return 2  # 双人脸时最多跳过2帧
+                return 5  # 双人脸时最多跳过5帧
             else:
-                return 3  # 三人脸及以上时最多跳过3帧
+                return 7  # 三人脸及以上时最多跳过7帧
         
         def should_skip_frame(self, face_count):
-            """判断是否应该跳过当前帧"""
+            """判断是否应该跳过当前帧 - 优化无人脸跳过逻辑"""
             self.skip_stats["total_frames"] += 1
             
-            if face_count > 0:
-                # 根据当前人脸数量动态调整最大跳过帧数
-                current_max_skip = self.get_max_skip_frames(face_count)
-                
-                if self.frame_skip_counter < current_max_skip:
-                    # 当检测到人脸时，根据人脸数量动态跳过帧
-                    self.frame_skip_counter += 1
-                    self.skip_stats["skipped_frames"] += 1
-                    return True
-                else:
-                    self.frame_skip_counter = 0
-                    self.skip_stats["detected_frames"] += 1
-                    return False
+            # 根据当前人脸数量动态调整最大跳过帧数
+            current_max_skip = self.get_max_skip_frames(face_count)
+            
+            if self.frame_skip_counter < current_max_skip:
+                # 根据人脸数量动态跳过帧
+                self.frame_skip_counter += 1
+                self.skip_stats["skipped_frames"] += 1
+                return True
             else:
-                # 无人脸时不跳过任何帧
+                # 达到最大跳过帧数，重置计数器并执行检测
                 self.frame_skip_counter = 0
                 self.skip_stats["detected_frames"] += 1
                 return False
@@ -249,19 +267,19 @@ class EmbeddedMediaPipeDetector:
         return self.frame_optimizer.should_skip_frame(face_count)
     
     def process_frame(self, frame, frame_number=None):
-        """处理单帧图像 - 直接使用测试脚本逻辑"""
+        """处理单帧图像 - 性能优化版本"""
         if frame_number is None:
             frame_number = self.frame_count + 1
         
-        print(f"帧{frame_number} - 检测器开始处理: 原始帧shape={frame.shape}")
+        # 性能优化：减少控制台输出
+        if self.enable_debug_logs:
+            print(f"帧{frame_number} - 检测器开始处理")
         
         # 摄像头垂直翻转（因为摄像头是倒置安装的）
         frame_flipped = cv2.flip(frame, 0)
-        print(f"帧{frame_number} - 检测器 - 垂直翻转+1: frame.shape={frame.shape} -> frame_flipped.shape={frame_flipped.shape}")
         
         # 先进行水平镜像，然后在镜像后的帧上进行检测，确保关键点坐标系正确
         frame_mirrored = cv2.flip(frame_flipped, 1)
-        print(f"帧{frame_number} - 检测器 - 水平镜像+1: frame_flipped.shape={frame_flipped.shape} -> frame_mirrored.shape={frame_mirrored.shape}")
         
         # 使用镜像后的帧进行检测
         rgb_frame = cv2.cvtColor(frame_mirrored, cv2.COLOR_BGR2RGB)
@@ -293,14 +311,18 @@ class EmbeddedMediaPipeDetector:
             self.frame_optimizer.last_inference_time = inference_time
             is_cached_result = False
             
-            # 缓存当前结果
+            # 缓存当前结果（无论是否有人脸）
             if results.multi_face_landmarks:
-                self.frame_optimizer.update_cache(
-                    results, 
-                    results.multi_face_landmarks, 
-                    [self.check_gaze(*self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)) 
-                     for face_landmarks in results.multi_face_landmarks]
-                )
+                gazing_states = [self.check_gaze(*self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)) 
+                               for face_landmarks in results.multi_face_landmarks]
+            else:
+                gazing_states = []
+            
+            self.frame_optimizer.update_cache(
+                results, 
+                results.multi_face_landmarks if results.multi_face_landmarks else [], 
+                gazing_states
+            )
         
         # 记录推理时间
         if is_cached_result:
@@ -350,10 +372,10 @@ class EmbeddedMediaPipeDetector:
         
         # 此时frame_mirrored已经是经过垂直翻转和水平镜像的帧，直接使用
         display_frame = frame_mirrored
-        print(f"帧{frame_number} - 检测器 - 直接使用镜像帧: display_frame.shape={display_frame.shape}")
         
-        # 在镜像后的帧上绘制人脸关键点
+        # 性能优化：减少绘制细节
         if results.multi_face_landmarks:
+            # 简化绘制：只绘制轮廓，不绘制完整网格
             for i, face_landmarks in enumerate(results.multi_face_landmarks):
                 face_info = self.smart_draw_landmarks(
                     display_frame, face_landmarks, 
@@ -361,15 +383,18 @@ class EmbeddedMediaPipeDetector:
                 )
                 face_positions.append(face_info)
         
-        print(f"帧{frame_number} - 检测器处理完成: 最终显示帧shape={display_frame.shape}")
+        if self.enable_debug_logs:
+            print(f"帧{frame_number} - 检测器处理完成")
+        
         return results, display_frame
     
     def draw_results(self, frame_flipped, results, face_positions):
         """绘制检测结果 - 直接使用测试脚本逻辑"""
+        print(f"[draw_results] 开始绘制，人脸数：{len(results.multi_face_landmarks) if results.multi_face_landmarks else 0}")
         # 注意：frame_flipped已经是process_frame返回的正确显示帧，无需再次翻转
         display_frame = frame_flipped
         
-        # 绘制关键点
+        # 优化绘制：只绘制6个关键点
         if results.multi_face_landmarks:
             face_count_display = len(results.multi_face_landmarks)
             
@@ -377,16 +402,15 @@ class EmbeddedMediaPipeDetector:
                 gray_color = (128, 128, 128)
                 
                 if face_count_display <= 2:
-                    # 详细绘制
-                    self.mp_drawing.draw_landmarks(
-                        display_frame,
-                        face_landmarks,
-                        self.mp_face_mesh.FACEMESH_TESSELATION,
-                        landmark_drawing_spec=self.mp_drawing.DrawingSpec(color=gray_color, thickness=1, circle_radius=1),
-                        connection_drawing_spec=self.mp_drawing.DrawingSpec(color=gray_color, thickness=1)
-                    )
+                    # 只绘制关注识别所需的6个关键点
+                    important_landmarks = [1, 33, 263, 61, 291, 199]
+                    for idx in important_landmarks:
+                        landmark = face_landmarks.landmark[idx]
+                        x = int(landmark.x * display_frame.shape[1])
+                        y = int(landmark.y * display_frame.shape[0])
+                        cv2.circle(display_frame, (x, y), 3, (0, 255, 0), -1)  # 绘制绿色小圆点
                 else:
-                    # 简化绘制
+                    # 多人脸时使用简化轮廓
                     self.mp_drawing.draw_landmarks(
                         display_frame,
                         face_landmarks,
