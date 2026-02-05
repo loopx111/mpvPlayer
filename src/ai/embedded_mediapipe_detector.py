@@ -159,44 +159,31 @@ class EmbeddedMediaPipeDetector:
         x_min, x_max = min(x_coords), max(x_coords)
         y_min, y_max = min(y_coords), max(y_coords)
         
-        if face_count <= 2:
-            # 优化绘制：只绘制关注识别所需的6个关键点
-            important_landmarks = [1, 33, 263, 61, 291, 199]  # 鼻尖、眼角、嘴角、下巴
-            for idx in important_landmarks:
-                landmark = face_landmarks.landmark[idx]
-                x = int(landmark.x * w)
-                y = int(landmark.y * h)
-                cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)  # 绘制绿色小圆点
+        # 统一使用6个绿色关键点绘制，无论人脸数量
+        important_landmarks = [1, 33, 263, 61, 291, 199]  # 鼻尖、眼角、嘴角、下巴
+        for idx in important_landmarks:
+            landmark = face_landmarks.landmark[idx]
+            x = int(landmark.x * w)
+            y = int(landmark.y * h)
+            cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)  # 绘制绿色小圆点
+        
+        # 绘制绿色编号
+        if is_gazing:
+            # 根据人脸数量选择编号位置
+            if face_count <= 2:
+                # 1-2张人脸：放在关键点图形右上角
+                text_x_pos = x_max - 20
+                text_y_pos = y_min + 30
+            else:
+                # 3张及以上人脸：放在边界框左上角
+                text_x_pos = x_min + 5
+                text_y_pos = y_min - 5
             
-            # 绘制关注状态和绿色编号
-            if is_gazing:
-                # 根据人脸数量选择编号位置
-                if face_count <= 2:
-                    # 1-2张人脸：放在关键点图形右上角
-                    text_x_pos = x_max - 20
-                    text_y_pos = y_min + 30
-                else:
-                    # 3张及以上人脸：放在边界框左上角
-                    text_x_pos = x_min + 5
-                    text_y_pos = y_min - 5
-                
-                # 绘制绿色数字编号
-                face_num = face_index + 1
-                cv2.putText(frame, f"{face_num}", 
-                           (text_x_pos, text_y_pos), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)  # 绿色编号
-        else:
-            # 简化绘制
-            self.mp_drawing.draw_landmarks(
-                frame,
-                face_landmarks,
-                self.mp_face_mesh.FACEMESH_CONTOURS,
-                landmark_drawing_spec=None,
-                connection_drawing_spec=self.mp_drawing.DrawingSpec(color=gray_color, thickness=1)
-            )
-            
-            # 为每个人脸绘制边界框
-            cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), gray_color, 2)
+            # 绘制绿色数字编号
+            face_num = face_index + 1
+            cv2.putText(frame, f"{face_num}", 
+                       (text_x_pos, text_y_pos), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)  # 绿色编号
         
         return {
             'face_index': face_index,
@@ -296,14 +283,16 @@ class EmbeddedMediaPipeDetector:
             cached_inference_time = self.frame_optimizer.last_inference_time
             is_cached_result = True
             
-            # 关键修复：检查当前帧是否真的有人脸
+            # 关键修复：检查当前帧是否真的有人脸，确保数据完全一致
             current_frame_check = self.face_mesh.process(rgb_frame)
             if not current_frame_check.multi_face_landmarks:
-                # 当前帧无人脸，清空缓存结果
+                # 当前帧无人脸，确保使用正确的无人脸结果
                 results = current_frame_check
-                self.frame_optimizer.update_cache(None, [], [])
-                self.frame_optimizer.frame_skip_counter = 0  # 重置跳过计数器
+                self.frame_optimizer.update_cache(results, [], [])
                 is_cached_result = False
+                # 重要：更新缓存的面部检测和注视状态，确保完全一致
+                self.frame_optimizer.cached_face_landmarks = []
+                self.frame_optimizer.cached_is_gazing = []
         else:
             # 正常检测
             results = self.face_mesh.process(rgb_frame)
@@ -336,6 +325,7 @@ class EmbeddedMediaPipeDetector:
         face_positions = []
         gazing_faces = 0
         
+        # 关键修复：确保无论是否使用缓存，gazing_faces都正确计算
         if results.multi_face_landmarks:
             for i, face_landmarks in enumerate(results.multi_face_landmarks):
                 # 计算头部姿态
@@ -354,6 +344,9 @@ class EmbeddedMediaPipeDetector:
                 
                 if is_gazing:
                     gazing_faces += 1
+        else:
+            # 无人脸时，确保gazing_faces为0
+            gazing_faces = 0
                 
         # 更新检测结果
         self.detection_results = {
@@ -383,44 +376,33 @@ class EmbeddedMediaPipeDetector:
                 )
                 face_positions.append(face_info)
         
+        # 只显示实时检测结果统计信息（仅当有人脸时）
+        results_info = self.detection_results
+        text_x = 10
+        
+        # 只在有人脸时显示检测结果文字
+        if results.multi_face_landmarks:
+            # 计算Gaze Ratio（注视比例）
+            gaze_ratio = (results_info['gazing_faces'] / len(results.multi_face_landmarks)) * 100
+            
+            # 绘制实时统计信息（蓝色文字）
+            cv2.putText(display_frame, f"FPS: {results_info['fps']:.1f}", (text_x, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+            cv2.putText(display_frame, f"DetectTime: {results_info['inference_time']:.1f}ms", (text_x, 50), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+            cv2.putText(display_frame, f"Face: {results_info['face_count']}", (text_x, 70), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+            cv2.putText(display_frame, f"Gazing: {results_info['gazing_faces']}", (text_x, 90), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+            cv2.putText(display_frame, f"Gaze Ratio: {gaze_ratio:.1f}%", (text_x, 110), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+        
         if self.enable_debug_logs:
             print(f"帧{frame_number} - 检测器处理完成")
         
         return results, display_frame
     
-    def draw_results(self, frame_flipped, results, face_positions):
-        """绘制检测结果 - 直接使用测试脚本逻辑"""
-        print(f"[draw_results] 开始绘制，人脸数：{len(results.multi_face_landmarks) if results.multi_face_landmarks else 0}")
-        # 注意：frame_flipped已经是process_frame返回的正确显示帧，无需再次翻转
-        display_frame = frame_flipped
-        
-        # 优化绘制：只绘制6个关键点
-        if results.multi_face_landmarks:
-            face_count_display = len(results.multi_face_landmarks)
-            
-            for i, face_landmarks in enumerate(results.multi_face_landmarks):
-                gray_color = (128, 128, 128)
-                
-                if face_count_display <= 2:
-                    # 只绘制关注识别所需的6个关键点
-                    important_landmarks = [1, 33, 263, 61, 291, 199]
-                    for idx in important_landmarks:
-                        landmark = face_landmarks.landmark[idx]
-                        x = int(landmark.x * display_frame.shape[1])
-                        y = int(landmark.y * display_frame.shape[0])
-                        cv2.circle(display_frame, (x, y), 3, (0, 255, 0), -1)  # 绘制绿色小圆点
-                else:
-                    # 多人脸时使用简化轮廓
-                    self.mp_drawing.draw_landmarks(
-                        display_frame,
-                        face_landmarks,
-                        self.mp_face_mesh.FACEMESH_CONTOURS,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=self.mp_drawing.DrawingSpec(color=gray_color, thickness=1)
-                    )
-        
-        return display_frame
-    
+
     def print_detection_info(self):
         """在控制台输出检测信息"""
         results = self.detection_results
