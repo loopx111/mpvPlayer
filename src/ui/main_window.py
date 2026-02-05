@@ -95,54 +95,15 @@ class MainWindow(QtWidgets.QMainWindow):
         download_layout.addRow("最后更新:", self.last_update)
         download_group.setLayout(download_layout)
         
-        # 摄像头显示区域
+        # 摄像头显示区域（简化版本，仅保留显示画面）
         camera_group = QtWidgets.QGroupBox("摄像头监控")
         camera_layout = QtWidgets.QVBoxLayout()
         
-        # 摄像头设备选择
-        device_layout = QtWidgets.QHBoxLayout()
-        device_layout.addWidget(QtWidgets.QLabel("摄像头设备:"))
-        self.camera_device_combo = QtWidgets.QComboBox()
-        self.camera_device_combo.addItem("自动检测", -1)
-        device_layout.addWidget(self.camera_device_combo)
-        device_layout.addStretch(1)
-        
-        # 摄像头控制按钮
-        control_layout = QtWidgets.QHBoxLayout()
-        self.camera_start_btn = QtWidgets.QPushButton("启动摄像头")
-        self.camera_stop_btn = QtWidgets.QPushButton("停止摄像头")
-        self.camera_capture_btn = QtWidgets.QPushButton("拍照")
-        self.camera_rotate_btn = QtWidgets.QPushButton("旋转90°")
-        self.ai_analysis_btn = QtWidgets.QPushButton("AI分析: 开启")
-        
-        self.camera_start_btn.clicked.connect(self._start_camera)
-        self.camera_stop_btn.clicked.connect(self._stop_camera)
-        self.camera_capture_btn.clicked.connect(self._capture_image)
-        self.camera_rotate_btn.clicked.connect(self._rotate_camera)
-        self.ai_analysis_btn.clicked.connect(self._toggle_ai_analysis)
-        
-        self.camera_stop_btn.setEnabled(False)
-        self.camera_capture_btn.setEnabled(False)
-        self.camera_rotate_btn.setEnabled(False)
-        self.ai_analysis_btn.setEnabled(False)
-        
-        # 设置AI按钮样式
-        self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
-        
-        control_layout.addWidget(self.camera_start_btn)
-        control_layout.addWidget(self.camera_stop_btn)
-        control_layout.addWidget(self.camera_capture_btn)
-        control_layout.addWidget(self.camera_rotate_btn)
-        control_layout.addWidget(self.ai_analysis_btn)
-        control_layout.addStretch(1)
-        
         # 摄像头状态显示
-        self.camera_status = QtWidgets.QLabel("摄像头未启动")
-        self.camera_status.setStyleSheet("color: gray; font-weight: bold;")
+        self.camera_status = QtWidgets.QLabel("摄像头自动运行中")
+        self.camera_status.setStyleSheet("color: green; font-weight: bold;")
         
         # 摄像头画面显示
-        camera_layout.addLayout(device_layout)
-        camera_layout.addLayout(control_layout)
         camera_layout.addWidget(self.camera_status)
         
         # 创建摄像头显示区域（与测试脚本保持一致，640x480）
@@ -350,16 +311,17 @@ class MainWindow(QtWidgets.QMainWindow):
             if success:
                 print("MediaPipe摄像头控制器初始化成功")
                 
-
-                
-                # 更新设备选择框
-                self._update_camera_device_list()
-                
                 # 添加摄像头控件到界面
                 self._update_camera_display()
                 
-                # 自动启动摄像头
-                self._start_camera()
+                # 自动启动摄像头（简化版本）
+                success = self.camera_controller.start_camera()
+                if success:
+                    self.camera_status.setText("摄像头自动运行中")
+                    self.camera_status.setStyleSheet("color: green; font-weight: bold;")
+                    print("摄像头自动启动成功")
+                else:
+                    print("摄像头自动启动失败")
             else:
                 print("摄像头控制器初始化失败")
                 self.camera_status.setText("摄像头初始化失败")
@@ -370,35 +332,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.camera_status.setText(f"摄像头错误: {e}")
             self.camera_status.setStyleSheet("color: red; font-weight: bold;")
     
-    def _update_camera_device_list(self):
-        """更新摄像头设备列表"""
-        try:
-            # 清空现有设备列表
-            self.camera_device_combo.clear()
-            self.camera_device_combo.addItem("自动检测", -1)
-            
-            # 添加可用的摄像头设备
-            if hasattr(self.camera_controller, 'available_cameras'):
-                available_cameras = self.camera_controller.available_cameras
-                
-                if available_cameras:
-                    for cam_index in available_cameras:
-                        self.camera_device_combo.addItem(f"摄像头 {cam_index}", cam_index)
-                    
-                    # 选择当前使用的摄像头
-                    current_index = self.camera_controller.camera_index
-                    for i in range(self.camera_device_combo.count()):
-                        if self.camera_device_combo.itemData(i) == current_index:
-                            self.camera_device_combo.setCurrentIndex(i)
-                            break
-                else:
-                    self.camera_device_combo.addItem("未检测到摄像头", -1)
-            
-            # 连接设备选择信号
-            self.camera_device_combo.currentIndexChanged.connect(self._on_camera_device_changed)
-            
-        except Exception as e:
-            print(f"更新设备列表错误: {e}")
+
     
     def _update_camera_display(self):
         """更新摄像头显示控件"""
@@ -425,79 +359,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             print(f"更新摄像头显示错误: {e}")
     
-    def _on_camera_device_changed(self, index):
-        """摄像头设备选择变化"""
-        try:
-            # 保存当前AI分析状态
-            ai_was_enabled = False
-            if hasattr(self.camera_controller, 'ai_enabled'):
-                ai_was_enabled = self.camera_controller.ai_enabled
-                # 如果AI分析正在运行，先停止
-                if ai_was_enabled:
-                    print("[设备切换] 停止AI分析...")
-                    self.camera_controller.disable_ai_analysis()
-                    
-                    # 更新分析结果状态
-                    self.ai_status_label.setText("AI分析已停止")
-                    self.ai_status_label.setStyleSheet("color: gray; font-weight: bold;")
-            
-            if self.camera_controller.is_connected:
-                # 如果摄像头正在运行，先停止
-                self._stop_camera()
-            
-            # 获取选中的设备索引
-            device_index = self.camera_device_combo.itemData(index)
-            
-            if device_index == -1:
-                # 自动检测模式
-                print("切换到自动检测模式")
-            else:
-                # 指定设备模式
-                print(f"选择摄像头设备: {device_index}")
-                
-                # 重新初始化控制器
-                success = self.camera_controller.initialize(
-                    camera_index=device_index, 
-                    resolution=(640, 480), 
-                    fps=15
-                )
-                
-                if success:
-                    self.camera_status.setText("摄像头设备已切换")
-                    self.camera_status.setStyleSheet("color: green; font-weight: bold;")
-                    
 
-                    
-                    # 如果之前启用了AI分析，重新启用
-                    if ai_was_enabled:
-                        print("[设备切换] 重新启用AI分析...")
-                        # 使用默认模型路径重新启用AI分析
-                        ai_success = self.camera_controller.enable_ai_analysis("models/yolov5s.onnx")
-                        if ai_success:
-                            print("[设备切换] ✓ AI分析重新启用成功")
-                            self.ai_analysis_btn.setText("AI分析: 开启")
-                            self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
-                            
-                            # 更新分析结果状态
-                            self.ai_status_label.setText("AI分析运行中...")
-                            self.ai_status_label.setStyleSheet("color: green; font-weight: bold;")
-                            self.ai_results_text.setPlainText("等待AI分析结果...")
-                        else:
-                            print("[设备切换] ✗ AI分析重新启用失败")
-                            self.ai_analysis_btn.setText("AI分析: 关闭")
-                            self.ai_analysis_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; font-weight: bold; }")
-                    
-                    # 更新显示控件
-                    self._update_camera_display()
-                else:
-                    self.camera_status.setText("设备切换失败")
-                    self.camera_status.setStyleSheet("color: red; font-weight: bold;")
-                
-                # 3秒后恢复状态
-                QtCore.QTimer.singleShot(3000, lambda: self.camera_status.setText("摄像头未启动"))
-                
-        except Exception as e:
-            print(f"切换摄像头设备错误: {e}")
     
     def _start_camera(self):
         """启动摄像头"""

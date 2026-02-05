@@ -169,21 +169,15 @@ class EmbeddedMediaPipeDetector:
         
         # 绘制绿色编号
         if is_gazing:
-            # 根据人脸数量选择编号位置
-            if face_count <= 2:
-                # 1-2张人脸：放在关键点图形右上角
-                text_x_pos = x_max - 20
-                text_y_pos = y_min + 30
-            else:
-                # 3张及以上人脸：放在边界框左上角
-                text_x_pos = x_min + 5
-                text_y_pos = y_min - 5
+            # 将编号放在关键点图形的正上方（人头上方）
+            text_x_pos = (x_min + x_max) // 2  # 水平居中
+            text_y_pos = y_min - 10  # 在人脸边界框上方
             
             # 绘制绿色数字编号
             face_num = face_index + 1
             cv2.putText(frame, f"{face_num}", 
                        (text_x_pos, text_y_pos), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)  # 绿色编号
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 255, 0), 3)  # 绿色编号，字体增大一倍
         
         return {
             'face_index': face_index,

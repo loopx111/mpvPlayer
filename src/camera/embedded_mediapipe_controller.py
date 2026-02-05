@@ -26,40 +26,16 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         # 嵌入式检测器
         self.detector = EmbeddedMediaPipeDetector()
         
-        # 检测结果标签
-        self.face_count_label = QtWidgets.QLabel("未检测")
-        self.gaze_count_label = QtWidgets.QLabel("0")
-        self.fps_label = QtWidgets.QLabel("0.0")
-        self.inference_label = QtWidgets.QLabel("0ms")
-        
         # 显示图像
         self.image_label = QtWidgets.QLabel()
         self.image_label.setAlignment(QtCore.Qt.AlignCenter)
         self.image_label.setMinimumSize(640, 480)
         
-        # 统计信息布局
-        stats_layout = QtWidgets.QHBoxLayout()
-        stats_layout.addWidget(QtWidgets.QLabel("人脸数:"))
-        stats_layout.addWidget(self.face_count_label)
-        stats_layout.addWidget(QtWidgets.QLabel("注视数:"))
-        stats_layout.addWidget(self.gaze_count_label)
-        stats_layout.addWidget(QtWidgets.QLabel("FPS:"))
-        stats_layout.addWidget(self.fps_label)
-        stats_layout.addWidget(QtWidgets.QLabel("推理:"))
-        stats_layout.addWidget(self.inference_label)
-        stats_layout.addStretch(1)
-        
-        # 主布局
+        # 主布局（只包含图像显示）
         main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(self.image_label)
-        main_layout.addLayout(stats_layout)
         
         self.setLayout(main_layout)
-        
-        # 更新定时器
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self.update_display)
-        self.update_timer.start(100)  # 每100ms更新一次显示
         
         print("嵌入式MediaPipe摄像头控件初始化完成")
     
@@ -79,34 +55,7 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
             print(f"处理帧时出错: {e}")
             return frame
     
-    def update_display(self):
-        """更新显示信息"""
-        try:
-            results = self.detector.detection_results
-            
-            # 更新标签
-            self.face_count_label.setText(str(results['face_count']))
-            self.gaze_count_label.setText(str(results['gazing_faces']))
-            self.fps_label.setText(f"{results['fps']:.1f}")
-            self.inference_label.setText(f"{results['inference_time']:.1f}ms")
-            
-            # 根据检测结果设置颜色
-            if results['face_count'] > 0:
-                if results['gazing_faces'] > 0:
-                    # 绿色：有人注视
-                    self.face_count_label.setStyleSheet("color: green; font-weight: bold;")
-                    self.gaze_count_label.setStyleSheet("color: green; font-weight: bold;")
-                else:
-                    # 黄色：有人但未注视
-                    self.face_count_label.setStyleSheet("color: orange; font-weight: bold;")
-                    self.gaze_count_label.setStyleSheet("color: orange; font-weight: bold;")
-            else:
-                # 红色：无人脸
-                self.face_count_label.setStyleSheet("color: red; font-weight: bold;")
-                self.gaze_count_label.setStyleSheet("color: red; font-weight: bold;")
-                
-        except Exception as e:
-            print(f"更新显示时出错: {e}")
+
     
     def update_image(self, qimage):
         """更新显示的图像"""
