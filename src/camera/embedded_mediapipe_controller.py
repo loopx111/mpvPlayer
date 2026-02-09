@@ -12,6 +12,7 @@ from typing import Optional, Callable, Dict
 import numpy as np
 from PySide6 import QtCore, QtWidgets, QtGui
 from PySide6.QtCore import QTimer, Signal
+import sys
 
 from src.player.camera_controller import CameraController, CameraWidget, CameraThread
 from src.ai.embedded_mediapipe_detector import EmbeddedMediaPipeDetector
@@ -20,11 +21,22 @@ from src.ai.embedded_mediapipe_detector import EmbeddedMediaPipeDetector
 class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
     """嵌入式MediaPipe摄像头显示控件"""
     
-    def __init__(self):
+    def __init__(self, detector: EmbeddedMediaPipeDetector = None):
         super().__init__()
         
-        # 嵌入式检测器
-        self.detector = EmbeddedMediaPipeDetector()
+        # 强制打印调试信息，确认参数接收
+        print("=== 控件构造函数开始 ===")
+        print(f"控件接收到的检测器参数: {detector}")
+        print(f"控件接收到的检测器参数类型: {type(detector)}")
+        print(f"控件接收到的检测器参数ID: {id(detector) if detector else 'None'}")
+        
+        # 使用传入的检测器实例，如果没有传入则创建新的
+        if detector is None:
+            self.detector = EmbeddedMediaPipeDetector()
+            print("控件创建新的检测器实例")
+        else:
+            self.detector = detector
+            print(f"控件使用共享检测器实例，ID: {id(detector)}")
         
         # 显示图像
         self.image_label = QtWidgets.QLabel()
@@ -40,19 +52,16 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         print("嵌入式MediaPipe摄像头控件初始化完成")
     
     def process_frame(self, frame):
-        """处理摄像头帧"""
+        """处理摄像头帧 - 现在只负责显示，不进行检测"""
         try:
-            # 使用嵌入式检测器处理帧
-            results, display_frame = self.detector.process_frame(frame)
-            # 注意：process_frame已经包含了绘制，无需再次调用draw_results
+            # 控件不再进行检测，只负责显示
+            # 检测工作由摄像头线程中的检测器完成
             
-            # 输出检测信息到控制台
-            self.detector.print_detection_info()
-            
-            return display_frame
+            # 直接返回原始帧（或者可以添加一些显示相关的处理）
+            return frame
             
         except Exception as e:
-            print(f"处理帧时出错: {e}")
+            print(f"控件处理帧错误: {e}")
             return frame
     
 
@@ -83,9 +92,22 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
     """嵌入式MediaPipe摄像头采集线程"""
     frame_processed = Signal(np.ndarray)  # 处理后的帧信号
     
-    def __init__(self, camera_index: int = 2, resolution: tuple = (640, 480), fps: int = 30):
+    def __init__(self, camera_index: int = 2, resolution: tuple = (640, 480), fps: int = 30, detector: EmbeddedMediaPipeDetector = None):
         super().__init__(camera_index, resolution, fps)
-        self.detector = EmbeddedMediaPipeDetector()
+        
+        # 强制打印调试信息，确认参数接收
+        print("=== 线程构造函数开始 ===")
+        print(f"线程接收到的检测器参数: {detector}")
+        print(f"线程接收到的检测器参数类型: {type(detector)}")
+        print(f"线程接收到的检测器参数ID: {id(detector) if detector else 'None'}")
+        
+        # 使用传入的检测器实例，如果没有传入则创建新的
+        if detector is None:
+            self.detector = EmbeddedMediaPipeDetector()
+            print("摄像头线程创建新的检测器实例")
+        else:
+            self.detector = detector
+            print(f"摄像头线程使用共享检测器实例，ID: {id(detector)}")
         # 现在启用分析功能进行测试
         self.analysis_enabled = True
         # 帧号计数器
@@ -187,7 +209,8 @@ class EmbeddedMediaPipeCameraController(CameraController):
     def __init__(self):
         super().__init__()
         
-        # 嵌入式检测器
+        # 嵌入式检测器 - 创建共享实例
+        print("控制器开始创建检测器实例...")
         self.detector = EmbeddedMediaPipeDetector()
         
         # 检测状态
@@ -196,7 +219,9 @@ class EmbeddedMediaPipeCameraController(CameraController):
         # 回调函数
         self.on_analysis_result = None
         
-        print("嵌入式MediaPipe摄像头控制器初始化完成")
+        print("嵌入式MediaPipe摄像头控制器初始化完成 - 创建检测器实例")
+        print(f"控制器检测器实例ID: {id(self.detector)}")
+        print(f"控制器检测器引用计数: {sys.getrefcount(self.detector) if 'sys' in locals() else 'N/A'}")
     
     def start_camera(self, camera_index: int = 2, resolution: tuple = (640, 480), fps: int = 30) -> bool:
         """启动摄像头 - 使用嵌入式摄像头线程"""
@@ -206,14 +231,25 @@ class EmbeddedMediaPipeCameraController(CameraController):
                 self.camera_thread.stop()
                 self.camera_thread.wait(3000)
             
-            # 创建新的嵌入式摄像头线程
-            self.camera_thread = EmbeddedMediaPipeCameraThread(camera_index, resolution, fps)
+            # 创建新的嵌入式摄像头线程，并传入共享的检测器实例
+            print(f"传递给线程的检测器实例ID: {id(self.detector)}")
+            print(f"传递给线程的检测器参数: {self.detector}")
+            print(f"传递给线程的检测器参数类型: {type(self.detector)}")
+            # 使用命名参数确保正确传递检测器实例
+            self.camera_thread = EmbeddedMediaPipeCameraThread(
+                camera_index=camera_index, 
+                resolution=resolution, 
+                fps=fps, 
+                detector=self.detector
+            )
             self.camera_thread.frame_processed.connect(self._on_frame_received)
             self.camera_thread.start()
             
             # 启动分析功能 - 现在启用检测器进行测试
             self.analysis_enabled = True
             print(f"嵌入式MediaPipe摄像头 {camera_index} 启动成功，分析功能已启用: {self.analysis_enabled}")
+            print(f"线程使用控制器检测器实例ID: {id(self.detector)}")
+            print(f"线程实际使用的检测器实例ID: {id(self.camera_thread.detector)}")
             return True
             
         except Exception as e:
@@ -228,8 +264,14 @@ class EmbeddedMediaPipeCameraController(CameraController):
             self.resolution = resolution
             self.fps = fps
             
-            # 创建嵌入式控件（不使用父类的CameraWidget）
-            self.camera_widget = EmbeddedMediaPipeCameraWidget()
+            # 创建嵌入式控件（不使用父类的CameraWidget），传入共享的检测器实例
+            print(f"控制器初始化时检测器实例ID: {id(self.detector)}")
+            print(f"传递给控件的检测器实例ID: {id(self.detector)}")
+            print(f"传递给控件的检测器参数: {self.detector}")
+            print(f"传递给控件的检测器参数类型: {type(self.detector)}")
+            # 使用命名参数确保正确传递检测器实例
+            self.camera_widget = EmbeddedMediaPipeCameraWidget(detector=self.detector)
+            print(f"控件创建完成，控件检测器实例ID: {id(self.camera_widget.detector)}")
             
             # 检测可用摄像头
             self.available_cameras = self._detect_available_cameras()
