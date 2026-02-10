@@ -1,3 +1,4 @@
+import time
 from PySide6 import QtWidgets, QtGui, QtCore
 from PySide6.QtCore import Qt, QTimer, QDateTime
 from typing import Optional
@@ -7,6 +8,7 @@ from ..file_dist.manager import DownloadManager
 from ..player.mpv_controller import MpvController
 from ..player.camera_controller import CameraController
 from ..camera.embedded_mediapipe_controller import EmbeddedMediaPipeCameraController
+from ..ai.ad_attention_scorer import AdAttentionScorer
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -19,6 +21,11 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # 初始化嵌入式MediaPipe摄像头控制器
         self.camera_controller = EmbeddedMediaPipeCameraController()
+        
+        # 初始化广告关注度评分器
+        self.ad_scorer = AdAttentionScorer()
+        self.current_ad_id = None
+        self.current_ad_start_time = None
         
         self.setWindowTitle("广告屏播放器控制台")
         self.resize(1200, 800)
@@ -125,23 +132,53 @@ class MainWindow(QtWidgets.QMainWindow):
         return panel
 
     def _create_control_panel(self) -> QtWidgets.QGroupBox:
-        """创建控制面板"""
-        panel = QtWidgets.QGroupBox("播放控制")
+        """创建控制面板 - 替换为广告关注度显示"""
+        panel = QtWidgets.QGroupBox("广告关注度统计")
         layout = QtWidgets.QVBoxLayout()
         
-        # 播放列表
-        playlist_group = QtWidgets.QGroupBox("播放列表")
-        playlist_layout = QtWidgets.QVBoxLayout()
+        # 当前广告关注度
+        current_ad_group = QtWidgets.QGroupBox("当前广告")
+        current_layout = QtWidgets.QFormLayout()
         
-        self.playlist_widget = QtWidgets.QListWidget()
-        self.playlist_widget.setMaximumHeight(200)
-        self.playlist_widget.itemDoubleClicked.connect(self._play_selected_file)
-        playlist_layout.addWidget(self.playlist_widget)
-        playlist_group.setLayout(playlist_layout)
+        self.current_ad_label = QtWidgets.QLabel("无广告播放")
+        self.current_ad_score = QtWidgets.QLabel("0")
+        self.current_ad_score.setStyleSheet("font-size: 24px; font-weight: bold; color: #2196F3;")
         
-        # 控制按钮已移除，简化界面
+        current_layout.addRow("广告名称:", self.current_ad_label)
+        current_layout.addRow("关注度得分:", self.current_ad_score)
+        current_ad_group.setLayout(current_layout)
         
-        layout.addWidget(playlist_group)
+        # 历史广告排名
+        history_group = QtWidgets.QGroupBox("广告排名")
+        history_layout = QtWidgets.QVBoxLayout()
+        
+        self.ad_ranking_widget = QtWidgets.QListWidget()
+        self.ad_ranking_widget.setMaximumHeight(300)
+        history_layout.addWidget(self.ad_ranking_widget)
+        
+        history_group.setLayout(history_layout)
+        
+        # 详细统计信息
+        stats_group = QtWidgets.QGroupBox("详细统计")
+        stats_layout = QtWidgets.QFormLayout()
+        
+        self.attention_ratio_label = QtWidgets.QLabel("0%")
+        self.absolute_attention_label = QtWidgets.QLabel("0")
+        self.continuity_label = QtWidgets.QLabel("0%")
+        self.consistency_label = QtWidgets.QLabel("0%")
+        self.coverage_label = QtWidgets.QLabel("0%")
+        
+        stats_layout.addRow("注意力比率:", self.attention_ratio_label)
+        stats_layout.addRow("绝对关注规模:", self.absolute_attention_label)
+        stats_layout.addRow("持续关注深度:", self.continuity_label)
+        stats_layout.addRow("关注稳定性:", self.consistency_label)
+        stats_layout.addRow("关注覆盖率:", self.coverage_label)
+        
+        stats_group.setLayout(stats_layout)
+        
+        layout.addWidget(current_ad_group)
+        layout.addWidget(history_group)
+        layout.addWidget(stats_group)
         layout.addStretch(1)
         
         panel.setLayout(layout)
@@ -221,16 +258,320 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # 更新播放列表
         self._update_playlist()
+        
+        # 更新广告关注度统计
+        self._update_ad_attention_stats()
 
     def _update_playlist(self) -> None:
-        """更新播放列表显示"""
-        if not hasattr(self.player, 'queue'):
-            return
+        """更新播放列表显示（已废弃，保留方法避免错误）"""
+        # 播放列表功能已被广告关注度统计替代
+        # 这个方法现在只做空操作以避免错误
+        pass
+    
+    def _update_ad_attention_stats(self) -> None:
+        """更新广告关注度统计 - 基于累加统计方案"""
+        try:
+            print(f"=== 广告关注度统计更新开始 ===")
             
-        self.playlist_widget.clear()
-        for i, file_path in enumerate(self.player.queue):
-            item = QtWidgets.QListWidgetItem(f"{i+1}. {file_path.name}")
-            self.playlist_widget.addItem(item)
+            # 获取当前帧的检测数据
+            current_face_count = 0
+            current_gazing_faces = 0
+            
+            # 方法：直接通过控制器获取检测器数据
+            if hasattr(self.camera_controller, 'detector') and self.camera_controller.detector:
+                detector = self.camera_controller.detector
+                
+                # 关键修复：添加线程安全的数据获取机制
+                # 确保获取的是最新的检测结果
+                current_frame_count_before = detector.frame_count
+                detection_results = detector.detection_results
+                current_frame_count_after = detector.frame_count
+                
+                # 检查是否在读取过程中帧计数发生了变化
+                if current_frame_count_before != current_frame_count_after:
+                    print("警告：检测器正在处理新帧，重新获取数据...")
+                    detection_results = detector.detection_results
+                
+                current_face_count = detection_results.get('face_count', 0)
+                current_gazing_faces = detection_results.get('gazing_faces', 0)
+                
+                # 精简调试信息：只显示关键状态
+                print(f"检测器状态: frame_count={detector.frame_count}, face_count={current_face_count}, gazing_faces={current_gazing_faces}")
+            else:
+                print("警告：检测器不存在或未初始化，无法获取检测数据")
+                return
+            
+            # 初始化累计统计变量（如果不存在）
+            if not hasattr(self, 'cumulative_stats'):
+                self.cumulative_stats = {
+                    'total_face_count': 0,
+                    'total_gazing_faces': 0,
+                    'total_frames': 0,
+                    'frames_with_gaze': 0,
+                    'gazing_values': [],  # 存储每帧的注视人数用于方差计算
+                    'gazing_variance': 0.0,
+                    'last_update_time': time.time()
+                }
+            
+            # 累加统计（符合你的方案）
+            self.cumulative_stats['total_face_count'] += current_face_count
+            self.cumulative_stats['total_gazing_faces'] += current_gazing_faces
+            self.cumulative_stats['total_frames'] += 1
+            if current_gazing_faces > 0:
+                self.cumulative_stats['frames_with_gaze'] += 1
+            
+            # 记录每帧的注视人数用于方差计算
+            self.cumulative_stats['gazing_values'].append(current_gazing_faces)
+            
+            # 计算注视人数的方差（用于稳定性指标）
+            if len(self.cumulative_stats['gazing_values']) > 1:
+                import numpy as np
+                self.cumulative_stats['gazing_variance'] = np.var(self.cumulative_stats['gazing_values'])
+            else:
+                self.cumulative_stats['gazing_variance'] = 0.0
+            
+            print(f"累计统计: 总人脸数={self.cumulative_stats['total_face_count']}, "
+                  f"总注视数={self.cumulative_stats['total_gazing_faces']}, "
+                  f"总帧数={self.cumulative_stats['total_frames']}")
+            
+            # 如果有广告正在播放，处理广告跟踪
+            if self.player.current_process:
+                current_file_info = self.get_current_file_info()
+                current_ad_id = self._get_current_ad_id()
+                
+                print(f"播放信息: 播放中={current_file_info['playing']}, 文件={current_file_info['current_file']}")
+                print(f"当前广告ID: {current_ad_id}, 上一个广告ID: {self.current_ad_id}")
+                
+                if current_file_info['playing']:
+                    # 增强广告切换检测
+                    should_start_new_ad = self._should_start_new_ad_tracking(current_ad_id)
+                    
+                    if should_start_new_ad:
+                        if self.current_ad_id:
+                            # 结束上一个广告的跟踪
+                            result = self.ad_scorer.end_ad_tracking()
+                            print(f"广告 {self.current_ad_id} 跟踪结束，得分: {result.get('total_score', 0)}")
+                            
+                            # 广告结束后显示5维度计算详情
+                            self._print_five_dimension_calculation(result)
+                        
+                        # 开始新广告跟踪（假设广告时长30秒）
+                        self.current_ad_id = current_ad_id
+                        self.current_ad_start_time = time.time()
+                        self.ad_scorer.start_ad_tracking(current_ad_id, 30.0)  # 默认30秒广告时长
+                        print(f"开始跟踪新广告: {current_ad_id}")
+                        
+                        # 重置累计统计（新广告开始）
+                        self.cumulative_stats = {
+                            'total_face_count': 0,
+                            'total_gazing_faces': 0,
+                            'total_frames': 0,
+                            'frames_with_gaze': 0,
+                            'gazing_values': [],  # 存储每帧的注视人数用于方差计算
+                            'gazing_variance': 0.0,
+                            'last_update_time': time.time()
+                        }
+                    
+                    # 添加当前帧数据到评分器（基于累加统计）
+                    self.ad_scorer.add_frame_data(current_face_count, current_gazing_faces)
+                    
+                    # 更新当前广告显示
+                    self.current_ad_label.setText(current_ad_id)
+                    
+                    # 获取最新得分（如果广告已结束）
+                    latest_score = self.ad_scorer.get_ad_score(current_ad_id)
+                    if latest_score:
+                        score = latest_score['total_score']
+                        self.current_ad_score.setText(f"{score}/100")
+                        
+                        # 更新详细统计
+                        breakdown = latest_score['breakdown']
+                        self.attention_ratio_label.setText(f"{breakdown['attention_score']:.1f}")
+                        self.absolute_attention_label.setText(f"{breakdown['absolute_score']:.1f}")
+                        self.continuity_label.setText(f"{breakdown['duration_score']:.1f}")
+                        self.consistency_label.setText(f"{breakdown['consistency_score']:.1f}")
+                        self.coverage_label.setText(f"{breakdown['efficiency_score']:.1f}")
+                        
+                        # 显示5个维度的计算参数和结果
+                        self._print_five_dimension_calculation(latest_score)
+                    else:
+                        # 广告仍在播放中，显示实时统计信息（基于累加数据）
+                        self.current_ad_score.setText("计算中...")
+                        
+                        # 计算实时统计（基于累计数据）
+                        if self.cumulative_stats['total_frames'] > 0:
+                            attention_ratio = self.cumulative_stats['total_gazing_faces'] / self.cumulative_stats['total_face_count'] if self.cumulative_stats['total_face_count'] > 0 else 0.0
+                            efficiency_ratio = self.cumulative_stats['frames_with_gaze'] / self.cumulative_stats['total_frames']
+                            
+                            # 计算实时持续关注深度（基于连续注视帧数）
+                            continuity_ratio = self.cumulative_stats['frames_with_gaze'] / self.cumulative_stats['total_frames'] if self.cumulative_stats['total_frames'] > 0 else 0.0
+                            
+                            # 计算实时关注稳定性（基于注视人数的稳定性）
+                            if self.cumulative_stats['total_frames'] > 1:
+                                # 使用注视人数的变化率作为稳定性指标
+                                consistency_ratio = 1.0 - (self.cumulative_stats['gazing_variance'] / max(1, self.cumulative_stats['total_gazing_faces'])) if self.cumulative_stats['total_gazing_faces'] > 0 else 0.0
+                            else:
+                                consistency_ratio = 0.0
+                            
+                            self.attention_ratio_label.setText(f"{attention_ratio*100:.1f}%")
+                            self.absolute_attention_label.setText(f"{self.cumulative_stats['total_gazing_faces']}")
+                            self.continuity_label.setText(f"{continuity_ratio*100:.1f}% (估算)")
+                            self.consistency_label.setText(f"{consistency_ratio*100:.1f}% (估算)")
+                            self.coverage_label.setText(f"{efficiency_ratio*100:.1f}% (估算)")
+                        
+                        print(f"广告进行中: {current_ad_id}, 等待结束计算...")
+                else:
+                    # 没有广告播放
+                    self.current_ad_label.setText("无广告播放")
+                    self.current_ad_score.setText("0")
+            else:
+                # 没有广告播放
+                self.current_ad_label.setText("无广告播放")
+                self.current_ad_score.setText("0")
+            
+            # 更新广告排名
+            self._update_ad_ranking()
+            
+            print(f"=== 广告关注度统计更新结束 ===\n")
+            
+        except Exception as e:
+            print(f"更新广告关注度统计时出错: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _should_start_new_ad_tracking(self, current_ad_id: str) -> bool:
+        """判断是否应该开始新的广告跟踪"""
+        try:
+            # 情况1：当前没有广告在跟踪
+            if not self.current_ad_id:
+                print("没有当前广告跟踪，开始新跟踪")
+                return True
+            
+            # 情况2：广告ID发生变化
+            if self.current_ad_id != current_ad_id:
+                print(f"广告ID发生变化: {self.current_ad_id} -> {current_ad_id}")
+                return True
+            
+            # 情况3：当前广告已播放超过30秒（可能已经切换到新广告但ID相同）
+            if hasattr(self, 'current_ad_start_time'):
+                current_time = time.time()
+                ad_duration = current_time - self.current_ad_start_time
+                if ad_duration > 35:  # 比默认30秒长5秒作为缓冲
+                    print(f"当前广告已播放{ad_duration:.1f}秒，可能已切换到新广告")
+                    return True
+            
+            # 情况4：检查播放器索引是否发生变化
+            if hasattr(self.player, 'current_file_index'):
+                current_index = self.player.current_file_index
+                # 这里可以添加索引变化的检测逻辑
+                
+            print("继续跟踪当前广告")
+            return False
+            
+        except Exception as e:
+            print(f"判断是否开始新广告跟踪时出错: {e}")
+            return True
+    
+    def _display_real_time_stats(self, face_count: int, gazing_faces: int):
+        """显示实时统计数据（广告播放期间）"""
+        try:
+            # 计算实时关注比率
+            attention_ratio = gazing_faces / face_count if face_count > 0 else 0.0
+            
+            # 显示实时统计数据
+            self.attention_ratio_label.setText(f"{attention_ratio*100:.1f}%")
+            self.absolute_attention_label.setText(str(gazing_faces))
+            
+            # 其他维度显示实时估算值（带估算标签）
+            efficiency_ratio = gazing_faces / max(1, face_count) if face_count > 0 else 0.0
+            self.continuity_label.setText(f"{efficiency_ratio*100:.1f}% (估算)")
+            self.consistency_label.setText("计算中...")
+            self.coverage_label.setText(f"{efficiency_ratio*100:.1f}% (估算)")
+            
+        except Exception as e:
+            print(f"显示实时统计数据时出错: {e}")
+    
+    def _update_ad_ranking(self) -> None:
+        """更新广告排名显示"""
+        try:
+            self.ad_ranking_widget.clear()
+            
+            # 获取排名
+            ranking = self.ad_scorer.get_score_ranking()
+            
+            for i, ad_info in enumerate(ranking):
+                ad_id = ad_info['ad_id']
+                score = ad_info['score']
+                
+                # 设置显示颜色
+                if score >= 80:
+                    color = "#4CAF50"  # 绿色
+                elif score >= 60:
+                    color = "#2196F3"  # 蓝色
+                elif score >= 40:
+                    color = "#FF9800"  # 橙色
+                else:
+                    color = "#F44336"  # 红色
+                
+                item = QtWidgets.QListWidgetItem(f"{i+1}. {ad_id} - {score}/100")
+                item.setForeground(QtGui.QColor(color))
+                self.ad_ranking_widget.addItem(item)
+                
+        except Exception as e:
+            print(f"更新广告排名时出错: {e}")
+    
+    def _print_five_dimension_calculation(self, score_result: dict) -> None:
+        """显示5个维度的计算参数和结果"""
+        try:
+            stats = score_result.get('statistics', {})
+            breakdown = score_result.get('breakdown', {})
+            
+            print("=== 广告关注度5维度计算详情 ===")
+            print(f"广告ID: {stats.get('ad_id', 'N/A')}")
+            print(f"广告时长: {stats.get('ad_duration', 'N/A')}秒")
+            print(f"总帧数: {stats.get('total_frames', 'N/A')}")
+            print(f"平均人脸数: {stats.get('avg_face_count', 'N/A')}")
+            print(f"平均注视人数: {stats.get('avg_gazing_faces', 'N/A')}")
+            print()
+            
+            # 1. 注意力比率（25分）- 观看质量
+            attention_ratio = stats.get('attention_ratio', 0)
+            attention_score = breakdown.get('attention_score', 0)
+            print(f"1. 注意力比率: {attention_ratio:.3f} * 25 = {attention_score:.1f}分")
+            print(f"   公式: 注视人数 ÷ 总人数 = 观看质量")
+            
+            # 2. 绝对关注规模（20分）- 观看规模  
+            avg_face = stats.get('avg_face_count', 0)
+            avg_gaze = stats.get('avg_gazing_faces', 0)
+            absolute_score = breakdown.get('absolute_score', 0)
+            print(f"2. 绝对关注规模: log2(1+{avg_gaze:.1f})/log2(1+{avg_face:.1f}) * 20 = {absolute_score:.1f}分")
+            print(f"   公式: 总注视人数 = 观看规模")
+            
+            # 3. 持续关注深度（25分）- 观看深度
+            continuity_ratio = stats.get('continuity_ratio', 0)
+            duration_score = breakdown.get('duration_score', 0)
+            print(f"3. 持续关注深度: {continuity_ratio:.3f} * 25 = {duration_score:.1f}分")
+            print(f"   公式: 总注视时长 ÷ 总注视人数 = 平均观看时长")
+            
+            # 4. 关注稳定性（15分）- 稳定性
+            consistency = stats.get('consistency', 0)
+            consistency_score = breakdown.get('consistency_score', 0)
+            print(f"4. 关注稳定性: {consistency:.3f} * 15 = {consistency_score:.1f}分")
+            print(f"   公式: 稳定注视时长 ÷ 总注视时长 = 观看稳定性")
+            
+            # 5. 关注覆盖率（15分）- 覆盖率
+            efficiency_ratio = stats.get('efficiency_ratio', 0)
+            efficiency_score = breakdown.get('efficiency_score', 0)
+            print(f"5. 关注覆盖率: {efficiency_ratio:.3f} * 15 = {efficiency_score:.1f}分")
+            print(f"   公式: 实际观看人数 ÷ 潜在观看人数 = 覆盖范围")
+            
+            # 最终总分
+            total_score = score_result.get('total_score', 0)
+            print(f"最终总分: {total_score:.1f}/100")
+            print("==================================")
+            
+        except Exception as e:
+            print(f"显示维度计算详情时出错: {e}")
 
 
     
@@ -254,24 +595,78 @@ class MainWindow(QtWidgets.QMainWindow):
     def _get_current_playing_file(self) -> str:
         """获取当前播放的文件名"""
         try:
-            if hasattr(self.player, 'queue') and hasattr(self.player, 'current_file_index'):
-                if 0 <= self.player.current_file_index < len(self.player.queue):
-                    current_file = self.player.queue[self.player.current_file_index]
-                    return current_file.name
-                
-            # 如果无法通过索引获取，尝试通过其他方式
+            # 方式0：优先使用IPC查询（最新最准确）
+            if hasattr(self.player, 'current_playing_file') and self.player.current_playing_file:
+                current_file = self.player.current_playing_file
+                # 提取文件名（如果包含路径）
+                if '/' in current_file or '\\' in current_file:
+                    import os
+                    current_file = os.path.basename(current_file)
+                print(f"通过IPC查询获取到文件: {current_file}")
+                return current_file
+            
+            # 方式1：通过播放器内部方法获取
             if hasattr(self.player, '_get_current_file'):
                 current_file = self.player._get_current_file()
                 if current_file:
+                    print(f"通过_get_current_file获取到文件: {current_file.name}")
                     return current_file.name
+            
+            # 方式2：通过索引获取
+            if hasattr(self.player, 'queue') and hasattr(self.player, 'current_file_index'):
+                if 0 <= self.player.current_file_index < len(self.player.queue):
+                    current_file = self.player.queue[self.player.current_file_index]
+                    print(f"通过索引获取到文件: {current_file.name} (索引={self.player.current_file_index})")
+                    return current_file.name
+            
+            # 方式3：检查播放列表文件
+            if hasattr(self.player, 'playlist_file') and self.player.playlist_file:
+                print(f"尝试读取播放列表文件: {self.player.playlist_file}")
+                try:
+                    with open(self.player.playlist_file, 'r', encoding='utf-8') as f:
+                        playlist = f.readlines()
+                    if playlist and hasattr(self.player, 'current_file_index'):
+                        if 0 <= self.player.current_file_index < len(playlist):
+                            current_file_path = playlist[self.player.current_file_index].strip()
+                            current_file = Path(current_file_path)
+                            print(f"通过播放列表文件获取到文件: {current_file.name}")
+                            return current_file.name
+                except Exception as e:
+                    print(f"读取播放列表文件失败: {e}")
+            
+            # 方式4：如果有播放进程但无法确定文件，显示通用信息
+            if self.player.current_process:
+                print("检测到播放进程运行中，但无法确定具体文件")
+                return "播放中..."
                     
         except Exception as e:
             print(f"获取当前播放文件时出错: {e}")
+            import traceback
+            traceback.print_exc()
             
         return ""
     
+    def _get_current_ad_id(self) -> str:
+        """获取当前广告ID（优化版本）"""
+        try:
+            # 获取当前播放的文件名
+            current_file = self._get_current_playing_file()
+            
+            # 如果文件名为空，说明没有广告正在播放
+            if not current_file or current_file == "播放中...":
+                print("无法确定当前广告ID，使用默认值")
+                return "未知广告"
+            
+            # 返回文件名作为广告ID
+            print(f"当前广告ID: {current_file}")
+            return current_file
+            
+        except Exception as e:
+            print(f"获取当前广告ID时出错: {e}")
+            return "未知广告"
+    
     def get_current_file_info(self):
-        """获取当前播放文件信息（用于MQTT状态报告）"""
+        """获取当前播放文件信息（优化版本）"""
         info = {
             "current_file": "",
             "current_index": 0,
@@ -283,14 +678,17 @@ class MainWindow(QtWidgets.QMainWindow):
             # 播放状态
             info["playing"] = bool(self.player.current_process)
             
+            # 使用新的文件获取方法
+            current_file_name = self._get_current_playing_file()
+            info["current_file"] = current_file_name
+            
             # 文件队列信息
             if hasattr(self.player, 'queue'):
                 info["total_files"] = len(self.player.queue)
                 
-                if hasattr(self.player, 'current_file_index') and 0 <= self.player.current_file_index < len(self.player.queue):
-                    current_file = self.player.queue[self.player.current_file_index]
-                    info["current_file"] = current_file.name
-                    info["current_index"] = self.player.current_file_index + 1
+            # 尝试获取当前索引
+            if hasattr(self.player, 'current_file_index'):
+                info["current_index"] = self.player.current_file_index + 1
                     
         except Exception as e:
             print(f"获取播放文件信息时出错: {e}")

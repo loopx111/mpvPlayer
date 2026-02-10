@@ -31,6 +31,9 @@ class MpvController:
         self.current_file_index = 0  # 当前播放文件的索引
         self._last_process_check = 0  # 上次检查进程状态的时间戳
         
+        # 支持的视频格式（必须在后台线程启动前定义）
+        self.supported_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
+        
         # 异步控制队列
         self._command_queue = queue.Queue()
         self._running = True
@@ -48,8 +51,12 @@ class MpvController:
         self.playlist_file = None
         self.use_playlist_mode = False  # 是否使用播放列表模式
         
-        # 支持的视频格式
-        self.supported_formats = ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']
+        # 启动IPC状态查询定时器
+        self._start_ipc_query_timer()
+        
+        # IPC状态查询相关
+        self.current_playing_file = None  # 当前通过IPC查询到的播放文件
+        self.ipc_query_timer = None  # IPC查询定时器
         
 
 
@@ -315,6 +322,9 @@ class MpvController:
             "--input-default-bindings=yes"
         ]
         
+        # 添加IPC支持
+        cmd.append("--input-ipc-server=/tmp/mpv-socket")
+        
         # 添加字幕选项
         # 根据操作系统选择合适的字幕文件路径
         if platform.system().lower() == "linux":
@@ -349,6 +359,9 @@ class MpvController:
             f"--cursor-autohide={3000}",
             "--input-default-bindings=yes"
         ]
+        
+        # 添加IPC支持
+        cmd.append("--input-ipc-server=/tmp/mpv-socket")
         
         # 添加字幕选项
         # 根据操作系统选择合适的字幕文件路径
@@ -521,6 +534,134 @@ class MpvController:
         except Exception as e:
             self.log.warning(f"IPC命令失败，将使用备用方案: {e}")
             return False
+    
+    def query_mpv_status(self) -> dict:
+        """通过IPC查询MPV播放状态"""
+        try:
+            import socket
+            import json
+            import platform
+            
+            # 检查操作系统类型
+            system = platform.system().lower()
+            
+            if system == "windows":
+                # Windows系统暂不支持IPC查询
+                return {"error": "Windows系统暂不支持IPC查询"}
+            else:
+                # Linux/Unix系统使用Unix域套接字
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(2.0)  # 2秒超时，避免连接问题
+                
+                try:
+                    sock.connect("/tmp/mpv-socket")
+                except Exception as e:
+                    self.log.debug(f"IPC连接失败: {e}")
+                    return {"error": f"IPC连接失败: {e}"}
+                
+                # 查询当前播放文件的路径（使用path属性，最准确）
+                cmd = {
+                    "command": ["get_property", "path"],
+                    "request_id": 1
+                }
+                cmd_str = json.dumps(cmd)
+                self.log.info(f"[IPC查询] 发送命令: {cmd_str}")
+                sock.send(cmd_str.encode() + b'\n')
+                
+                # 读取响应
+                response = sock.recv(1024).decode()
+                self.log.info(f"[IPC查询] 收到响应: {response}")
+                
+                # 解析响应
+                try:
+                    result = json.loads(response)
+                    
+                    # 查询其他状态信息
+                    status = {"file_path": result.get("data", "")}
+                    
+                    # 查询播放状态
+                    cmd = {
+                        "command": ["get_property", "pause"],
+                        "request_id": 3
+                    }
+                    cmd_str = json.dumps(cmd)
+                    self.log.info(f"[IPC查询] 发送暂停状态查询: {cmd_str}")
+                    sock.send(cmd_str.encode() + b'\n')
+                    response = sock.recv(1024).decode()
+                    self.log.info(f"[IPC查询] 收到暂停状态响应: {response}")
+                    
+                    pause_result = json.loads(response)
+                    status["paused"] = pause_result.get("data", False)
+                    
+                    # 查询播放时间
+                    cmd = {
+                        "command": ["get_property", "time-pos"],
+                        "request_id": 4
+                    }
+                    cmd_str = json.dumps(cmd)
+                    self.log.info(f"[IPC查询] 发送时间查询: {cmd_str}")
+                    sock.send(cmd_str.encode() + b'\n')
+                    response = sock.recv(1024).decode()
+                    self.log.info(f"[IPC查询] 收到时间响应: {response}")
+                    
+                    time_result = json.loads(response)
+                    status["time_pos"] = time_result.get("data", 0)
+                    
+                    # 查询播放列表位置
+                    cmd = {
+                        "command": ["get_property", "playlist-pos"],
+                        "request_id": 5
+                    }
+                    cmd_str = json.dumps(cmd)
+                    self.log.info(f"[IPC查询] 发送播放列表位置查询: {cmd_str}")
+                    sock.send(cmd_str.encode() + b'\n')
+                    response = sock.recv(1024).decode()
+                    self.log.info(f"[IPC查询] 收到播放列表位置响应: {response}")
+                    
+                    playlist_result = json.loads(response)
+                    status["playlist_pos"] = playlist_result.get("data", 0)
+                    
+                    sock.close()
+                    
+                    self.log.info(f"[IPC查询] MPV状态查询成功: {status}")
+                    return status
+                    
+                except json.JSONDecodeError as e:
+                    sock.close()
+                    return {"error": f"JSON解析失败: {e}"}
+                
+        except Exception as e:
+            self.log.debug(f"MPV状态查询失败: {e}")
+            return {"error": str(e)}
+    
+    def get_current_playing_file(self) -> Optional[str]:
+        """获取当前正在播放的文件名（通过IPC）"""
+        if not self.current_process:
+            return None
+            
+        # 检查进程是否仍在运行
+        poll_result = self.current_process.poll()
+        if poll_result is not None:
+            return None
+            
+        # 通过IPC查询当前播放文件
+        status = self.query_mpv_status()
+        # 只要status中有file_path字段，就认为查询成功
+        if "file_path" in status:
+            current_file = status.get("file_path", "")
+            # 更新当前播放文件属性
+            if current_file != self.current_playing_file:
+                self.current_playing_file = current_file
+                self.log.info(f"get_current_playing_file更新当前播放文件: {current_file}")
+            return current_file
+        else:
+            # IPC查询失败，回退到内部记录
+            current_file = self._get_current_file()
+            fallback_file = str(current_file) if current_file else None
+            if fallback_file and fallback_file != self.current_playing_file:
+                self.current_playing_file = fallback_file
+                self.log.info(f"get_current_playing_file回退到内部记录: {fallback_file}")
+            return fallback_file
 
     def _stop_play_internal(self) -> None:
         """内部停止播放实现"""
@@ -530,6 +671,9 @@ class MpvController:
         """清理资源"""
         self.log.info("开始清理MPV控制器资源...")
         self._running = False
+        
+        # 停止IPC查询定时器
+        self.stop_ipc_query_timer()
         
         # 停止所有工作线程
         if self._worker_thread and self._worker_thread.is_alive():
@@ -609,3 +753,78 @@ class MpvController:
                     self.log.warning(f"清理僵尸进程时出错: {e}")
         except Exception as e:
             self.log.warning(f"僵尸进程清理功能异常: {e}")
+    
+    def _start_ipc_query_timer(self) -> None:
+        """启动IPC状态查询定时器（3秒周期）"""
+        try:
+            import threading
+            
+            def ipc_query_worker():
+                """IPC查询工作线程"""
+                consecutive_errors = 0  # 连续错误计数
+                max_consecutive_errors = 5  # 最大连续错误数
+                
+                while self._running:
+                    try:
+                        if self.current_process and self.current_process.poll() is None:
+                            # 通过IPC查询当前播放文件
+                            current_file = self.get_current_playing_file()
+                            
+                            # 如果IPC查询成功，重置错误计数
+                            if current_file and "error" not in str(current_file):
+                                consecutive_errors = 0
+                                
+                                # 提取文件名（如果包含路径）
+                                if '/' in current_file or '\\' in current_file:
+                                    import os
+                                    current_file = os.path.basename(current_file)
+                                
+                                if current_file != self.current_playing_file:
+                                    self.current_playing_file = current_file
+                                    self.log.info(f"IPC查询到当前播放文件: {current_file}")
+                            else:
+                                # IPC查询失败，增加错误计数
+                                consecutive_errors += 1
+                                self.log.debug(f"IPC查询失败，连续错误次数: {consecutive_errors}")
+                                
+                                # 如果连续错误过多，回退到内部索引
+                                if consecutive_errors >= max_consecutive_errors:
+                                    self.log.warning("IPC查询连续失败，回退到内部索引")
+                                    current_file = self._get_current_file()
+                                    if current_file:
+                                        self.current_playing_file = current_file.name
+                                        consecutive_errors = 0  # 重置错误计数
+                        
+                        # 等待3秒
+                        time.sleep(3)
+                    except Exception as e:
+                        consecutive_errors += 1
+                        self.log.debug(f"IPC查询定时器异常: {e}")
+                        
+                        # 如果连续错误过多，短暂休眠
+                        if consecutive_errors >= max_consecutive_errors:
+                            self.log.warning("IPC查询连续异常，等待10秒后重试")
+                            time.sleep(10)
+                        else:
+                            time.sleep(3)
+            
+            # 启动IPC查询线程
+            self.ipc_query_timer = threading.Thread(target=ipc_query_worker, daemon=True)
+            self.ipc_query_timer.start()
+            self.log.info("IPC状态查询定时器已启动（3秒周期）")
+            
+        except Exception as e:
+            self.log.error(f"启动IPC查询定时器失败: {e}")
+    
+    def stop_ipc_query_timer(self) -> None:
+        """停止IPC查询定时器"""
+        if self.ipc_query_timer and self.ipc_query_timer.is_alive():
+            self._running = False
+            try:
+                self.ipc_query_timer.join(timeout=5)
+                if self.ipc_query_timer.is_alive():
+                    self.log.warning("IPC查询定时器未能及时终止")
+                else:
+                    self.log.info("IPC查询定时器已停止")
+            except Exception as e:
+                self.log.warning(f"停止IPC查询定时器时出错: {e}")

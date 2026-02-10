@@ -271,22 +271,15 @@ class EmbeddedMediaPipeDetector:
         # 智能帧跳过策略
         should_skip = self.should_skip_frame(self.frame_optimizer.last_faces_count)
         
+        # 初始化变量
+        cached_inference_time = 0
+        inference_time = 0
+        
         if should_skip and self.frame_optimizer.cached_results:
             # 使用缓存结果
             results = self.frame_optimizer.cached_results
             cached_inference_time = self.frame_optimizer.last_inference_time
             is_cached_result = True
-            
-            # 关键修复：检查当前帧是否真的有人脸，确保数据完全一致
-            current_frame_check = self.face_mesh.process(rgb_frame)
-            if not current_frame_check.multi_face_landmarks:
-                # 当前帧无人脸，确保使用正确的无人脸结果
-                results = current_frame_check
-                self.frame_optimizer.update_cache(results, [], [])
-                is_cached_result = False
-                # 重要：更新缓存的面部检测和注视状态，确保完全一致
-                self.frame_optimizer.cached_face_landmarks = []
-                self.frame_optimizer.cached_is_gazing = []
         else:
             # 正常检测
             results = self.face_mesh.process(rgb_frame)
@@ -318,6 +311,7 @@ class EmbeddedMediaPipeDetector:
         # 处理检测结果
         face_positions = []
         gazing_faces = 0
+        gazing_states = []  # 存储每个人脸的注视状态
         
         # 关键修复：确保无论是否使用缓存，gazing_faces都正确计算
         if results.multi_face_landmarks:
@@ -335,6 +329,7 @@ class EmbeddedMediaPipeDetector:
                 self.last_yaw, self.last_pitch, self.last_roll = yaw, pitch, roll
                 
                 is_gazing = self.check_gaze(yaw, pitch, roll)
+                gazing_states.append(is_gazing)  # 存储注视状态
                 
                 if is_gazing:
                     gazing_faces += 1
@@ -342,18 +337,24 @@ class EmbeddedMediaPipeDetector:
             # 无人脸时，确保gazing_faces为0
             gazing_faces = 0
                 
-        # 更新检测结果
+        # 关键修复：确保检测结果正确反映实际状态
+        # 先更新帧计数器
+        self.frame_count += 1
+        
+        # 然后更新检测结果，确保数据完全正确
+        # 重要：确保frame_processed与frame_count完全同步
+        face_count = len(results.multi_face_landmarks) if results.multi_face_landmarks else 0
+        
         self.detection_results = {
-            'face_count': len(results.multi_face_landmarks) if results.multi_face_landmarks else 0,
+            'face_count': face_count,
             'gazing_faces': gazing_faces,
             'face_positions': face_positions,
             'inference_time': display_inference_time,
             'raw_results': results,
-            'frame_processed': self.frame_count
+            'frame_processed': self.frame_count  # 使用更新后的帧计数
         }
         
-        # 更新统计信息
-        self.frame_count += 1
+        # 更新FPS统计
         current_time = time.time() - self.start_time
         self.detection_results['fps'] = self.frame_count / current_time if current_time > 0 else 0
         
@@ -364,6 +365,8 @@ class EmbeddedMediaPipeDetector:
         if results.multi_face_landmarks:
             # 简化绘制：只绘制轮廓，不绘制完整网格
             for i, face_landmarks in enumerate(results.multi_face_landmarks):
+                # 使用存储的注视状态
+                is_gazing = gazing_states[i] if i < len(gazing_states) else False
                 face_info = self.smart_draw_landmarks(
                     display_frame, face_landmarks, 
                     len(results.multi_face_landmarks), i, is_gazing
