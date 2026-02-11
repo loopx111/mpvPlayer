@@ -16,6 +16,7 @@ class AdAttentionScorer:
     def __init__(self):
         self.current_ad_data = []  # 当前广告的帧数据
         self.ad_records = {}  # 存储每个广告的统计信息
+        self.ad_historical_stats = {}  # 存储广告的历史统计信息（用于累计平均排名）
         self.ad_start_time = None
         self.current_ad_id = None
         self.ad_duration = 0
@@ -186,6 +187,10 @@ class AdAttentionScorer:
         # 存储记录
         self.ad_records[self.current_ad_id] = result
         
+        # 更新历史统计（只统计有效得分>0的数据）
+        if result['total_score'] > 0:
+            self._update_historical_stats(self.current_ad_id, result['total_score'])
+        
         # 清空当前数据
         self.current_ad_data = []
         self.ad_start_time = None
@@ -194,6 +199,24 @@ class AdAttentionScorer:
         print(f"广告 {result['statistics']['ad_id']} 评分完成: {result['total_score']}/100")
         
         return result
+    
+    def _update_historical_stats(self, ad_id: str, score: float) -> None:
+        """更新广告的历史统计信息"""
+        if ad_id not in self.ad_historical_stats:
+            # 初始化历史统计
+            self.ad_historical_stats[ad_id] = {
+                'total_score': score,
+                'play_count': 1,
+                'avg_score': score,
+                'latest_score': score
+            }
+        else:
+            # 更新历史统计
+            stats = self.ad_historical_stats[ad_id]
+            stats['total_score'] += score
+            stats['play_count'] += 1
+            stats['avg_score'] = stats['total_score'] / stats['play_count']
+            stats['latest_score'] = score
     
     def get_ad_score(self, ad_id: str) -> Optional[Dict]:
         """获取指定广告的评分结果"""
@@ -208,16 +231,31 @@ class AdAttentionScorer:
         return self.ad_records.copy()
     
     def get_score_ranking(self) -> List[Dict]:
-        """获取广告评分排名"""
+        """获取广告评分排名（基于历史有效得分的平均分）"""
         scores = []
-        for ad_id, result in self.ad_records.items():
+        
+        # 优先使用历史统计中的平均得分
+        for ad_id, stats in self.ad_historical_stats.items():
             scores.append({
                 'ad_id': ad_id,
-                'score': result['total_score'],
-                'statistics': result['statistics']
+                'score': stats['avg_score'],  # 使用平均得分
+                'play_count': stats['play_count'],  # 播放次数
+                'total_score': stats['total_score'],  # 累计总分
+                'ranking_type': 'historical_avg'
             })
         
-        # 按得分降序排列
+        # 对于没有历史统计但最近有得分的广告，使用最新得分
+        for ad_id, result in self.ad_records.items():
+            if ad_id not in self.ad_historical_stats and result['total_score'] > 0:
+                scores.append({
+                    'ad_id': ad_id,
+                    'score': result['total_score'],  # 使用最新得分
+                    'play_count': 1,  # 只播放过一次
+                    'total_score': result['total_score'],  # 累计总分
+                    'ranking_type': 'latest_score'
+                })
+        
+        # 按平均得分降序排列
         scores.sort(key=lambda x: x['score'], reverse=True)
         return scores
 

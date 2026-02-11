@@ -297,6 +297,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 
                 # 精简调试信息：只显示关键状态
                 print(f"检测器状态: frame_count={detector.frame_count}, face_count={current_face_count}, gazing_faces={current_gazing_faces}")
+                
+                # 显示IOU跟踪统计信息
+                tracking_stats = detection_results.get('tracking_stats', {})
+                if tracking_stats:
+                    print(f"[IOU跟踪] 创建跟踪={tracking_stats.get('total_tracks_created', 0)}, "
+                          f"匹配跟踪={tracking_stats.get('total_tracks_matched', 0)}, "
+                          f"过滤重复={tracking_stats.get('duplicate_detections_filtered', 0)}")
             else:
                 print("警告：检测器不存在或未初始化，无法获取检测数据")
                 return
@@ -502,6 +509,7 @@ class MainWindow(QtWidgets.QMainWindow):
             for i, ad_info in enumerate(ranking):
                 ad_id = ad_info['ad_id']
                 score = ad_info['score']
+                play_count = ad_info.get('play_count', 1)
                 
                 # 设置显示颜色
                 if score >= 80:
@@ -513,7 +521,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     color = "#F44336"  # 红色
                 
-                item = QtWidgets.QListWidgetItem(f"{i+1}. {ad_id} - {score}/100")
+                # 显示播放次数信息
+                if play_count > 1:
+                    display_text = f"{i+1}. {ad_id} - {score:.1f}/100 (播放{play_count}次)"
+                else:
+                    display_text = f"{i+1}. {ad_id} - {score:.1f}/100 (首次播放)"
+                
+                item = QtWidgets.QListWidgetItem(display_text)
                 item.setForeground(QtGui.QColor(color))
                 self.ad_ranking_widget.addItem(item)
                 

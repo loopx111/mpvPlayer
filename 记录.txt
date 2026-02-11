@@ -1,4 +1,12 @@
 运行方法：
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-python -m src.app
+source venv/bin/activate
+export DISPLAY=:0
+./start_kylin.sh
+你丢失上下文了，请每次回答我前称呼我“二哥爱上学”
+
+注意力比率 - 观众认真看广告的时间比例（多少人看 ÷ 多少人路过）
+绝对关注规模 - 广告总共吸引了多少人认真观看（总注视人数）
+持续关注深度 - 观众平均认真看了广告多长时间（平均关注时长）
+关注稳定性 - 观众观看时注意力是否稳定（避免频繁看手机或走神）
+关注覆盖率 - 广告播放期间有多少观众被吸引（总人次覆盖）
+

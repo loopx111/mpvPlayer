@@ -26,7 +26,7 @@ class EmbeddedMediaPipeDetector:
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=3,  # 减少最大人脸数量
             refine_landmarks=False,  # 关闭精细关键点（提高性能）
-            min_detection_confidence=0.3,  # 降低检测阈值
+            min_detection_confidence=0.7,  # 提高检测阈值避免错误识别人脸
             min_tracking_confidence=0.3   # 降低跟踪阈值
         )
         
@@ -206,7 +206,7 @@ class EmbeddedMediaPipeDetector:
             if face_count == 0:
                 return 15  # 无人脸时最多跳过15帧（大幅提升性能）
             elif face_count == 1:
-                return 3  # 单人脸时最多跳过3帧
+                return 0  # 单人脸时最多跳过0帧
             elif face_count == 2:
                 return 5  # 双人脸时最多跳过5帧
             else:
