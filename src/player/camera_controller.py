@@ -1,11 +1,12 @@
 import cv2
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
-from PySide6.QtCore import QThread, Signal, QTimer
+from PySide6.QtCore import QThread, Signal
 import time
 import json
 import base64
 from typing import Optional, Callable
+from numpy.typing import NDArray
 
 
 class CameraThread(QThread):
@@ -21,39 +22,23 @@ class CameraThread(QThread):
         self.cap = None
         
     def run(self):
-        """线程运行函数"""
+        """线程运行函数 - 增强版本，支持智能重试"""
         try:
-            # 尝试不同后端打开摄像头
-            backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
-            
-            for backend in backends:
-                try:
-                    self.cap = cv2.VideoCapture(self.camera_index, backend)
-                    if self.cap.isOpened():
-                        print(f"使用后端 {backend} 成功打开摄像头 {self.camera_index}")
-                        break
-                except Exception as e:
-                    print(f"后端 {backend} 打开摄像头失败: {e}")
-                    continue
-            
-            if not self.cap or not self.cap.isOpened():
+            # 智能摄像头打开策略
+            if not self._open_camera_with_retry():
                 print(f"无法打开摄像头 {self.camera_index}")
                 return
             
             # 设置分辨率（尝试设置，但可能失败）
-            try:
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
-                self.cap.set(cv2.CAP_PROP_FPS, self.fps)
-            except Exception as e:
-                print(f"设置摄像头参数失败: {e}")
-                # 继续使用默认参数
+            if not self._setup_camera_parameters():
+                print("摄像头参数设置失败，使用默认参数")
             
             self.running = True
             
             # 计算帧间隔时间（毫秒）
             frame_interval = 1000 // self.fps if self.fps > 0 else 33
             
+            # 主采集循环
             while self.running:
                 start_time = time.time()
                 
@@ -64,11 +49,13 @@ class CameraThread(QThread):
                     
                     # 转换为RGB格式用于显示
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    # print(f"[摄像头线程] 读取到新帧，尺寸: {frame_rgb.shape}，准备发送信号...")  # 注释频繁日志
                     self.frame_ready.emit(frame_rgb)
-                    # print("[摄像头线程] 帧信号发送完成")  # 注释频繁日志
                 else:
-                    print("[摄像头线程] 读取帧失败，ret=", ret)
+                    print("[摄像头线程] 读取帧失败")
+                    # 帧读取失败时尝试重新打开摄像头
+                    if not self._recover_camera():
+                        print("摄像头恢复失败，停止线程")
+                        break
                 
                 # 控制帧率
                 elapsed = (time.time() - start_time) * 1000
@@ -80,6 +67,97 @@ class CameraThread(QThread):
         finally:
             if self.cap:
                 self.cap.release()
+    
+    def _open_camera_with_retry(self) -> bool:
+        """智能摄像头打开策略，支持重试"""
+        backends = [
+            cv2.CAP_ANY,    # 优先使用自动选择
+            cv2.CAP_V4L2,   # 次选V4L2
+            cv2.CAP_FFMPEG  # 最后尝试FFMPEG
+        ]
+        
+        max_attempts = 3
+        
+        for attempt in range(max_attempts):
+            for backend in backends:
+                try:
+                    # 使用更宽松的参数
+                    self.cap = cv2.VideoCapture(self.camera_index, backend)
+                    
+                    if self.cap.isOpened():
+                        # 验证摄像头可用性
+                        ret, frame = self.cap.read()
+                        if ret and frame is not None:
+                            print(f"使用后端 {backend} 成功打开摄像头 {self.camera_index}")
+                            return True
+                        else:
+                            self.cap.release()
+                            self.cap = None
+                            
+                except Exception as e:
+                    print(f"后端 {backend} 打开摄像头失败: {e}")
+                    continue
+            
+            # 如果不是最后一次尝试，等待后重试
+            if attempt < max_attempts - 1:
+                wait_time = (attempt + 1) * 1000  # 递增等待时间
+                print(f"摄像头打开尝试 {attempt + 1} 失败，等待 {wait_time}ms 后重试...")
+                self.msleep(wait_time)
+        
+        return False
+    
+    def _setup_camera_parameters(self) -> bool:
+        """设置摄像头参数"""
+        try:
+            # 设置缓冲区大小，减少延迟
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            
+            # 尝试设置分辨率
+            original_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            original_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+            
+            actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            
+            # 检查是否设置成功
+            if actual_width != original_width or actual_height != original_height:
+                print(f"分辨率设置成功: {actual_width}x{actual_height}")
+            else:
+                print(f"使用默认分辨率: {actual_width}x{actual_height}")
+            
+            # 设置帧率
+            original_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+            actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            
+            if actual_fps != original_fps:
+                print(f"帧率设置成功: {actual_fps}")
+            else:
+                print(f"使用默认帧率: {actual_fps}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"设置摄像头参数失败: {e}")
+            return False
+    
+    def _recover_camera(self) -> bool:
+        """尝试恢复摄像头连接"""
+        try:
+            if self.cap:
+                self.cap.release()
+                self.cap = None
+            
+            self.msleep(500)  # 等待设备恢复
+            
+            return self._open_camera_with_retry()
+            
+        except Exception as e:
+            print(f"摄像头恢复失败: {e}")
+            return False
     
     def stop(self):
         """停止摄像头采集"""
@@ -241,26 +319,46 @@ class CameraController:
         return self._test_camera()
     
     def _detect_available_cameras(self) -> list:
-        """检测可用摄像头设备"""
+        """智能检测可用摄像头设备"""
         available_cameras = []
         
-        # 检查前10个摄像头索引
-        for i in range(10):
-            try:
-                cap = cv2.VideoCapture(i)
-                if cap.isOpened():
-                    # 尝试读取一帧来验证摄像头是否真正可用
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        available_cameras.append(i)
-                        print(f"检测到可用摄像头: {i}")
-                    else:
-                        print(f"摄像头 {i} 无法读取画面")
-                cap.release()
-            except Exception as e:
-                print(f"检测摄像头 {i} 时出错: {e}")
+        # 智能检测顺序：先检查已知有效索引，再检查其他
+        preferred_indices = [0, 3, 1, 2]  # 根据诊断结果排序
+        other_indices = [i for i in range(10) if i not in preferred_indices]
         
+        # 检查首选索引
+        for i in preferred_indices:
+            if self._test_camera_index_silent(i):
+                available_cameras.append(i)
+                print(f"✓ 检测到可用摄像头: {i}")
+        
+        # 检查其他索引（静默模式）
+        for i in other_indices:
+            if self._test_camera_index_silent(i):
+                available_cameras.append(i)
+                print(f"✓ 检测到可用摄像头: {i}")
+        
+        print(f"可用摄像头设备: {available_cameras}")
         return available_cameras
+    
+    def _test_camera_index_silent(self, index: int) -> bool:
+        """静默测试摄像头索引，避免错误日志"""
+        try:
+            # 使用CAP_ANY后端，避免V4L2错误
+            cap = cv2.VideoCapture(index, cv2.CAP_ANY)
+            if not cap.isOpened():
+                return False
+            
+            # 设置快速超时
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            
+            # 尝试读取一帧
+            ret, frame = cap.read()
+            cap.release()
+            
+            return ret and frame is not None
+        except:
+            return False
     
     def _test_camera(self) -> bool:
         """测试摄像头是否可用"""
@@ -298,7 +396,7 @@ class CameraController:
             return False
     
     def start_camera(self) -> bool:
-        """启动摄像头"""
+        """启动摄像头 - 增强版本，支持智能重试"""
         if self.camera_thread and self.camera_thread.isRunning():
             return True
         
@@ -320,30 +418,59 @@ class CameraController:
             self.is_connected = False
             return True  # 返回True让界面可以显示
         
-        try:
-            # 创建并启动摄像头线程
-            self.camera_thread = CameraThread(
-                camera_index=self.camera_index,
-                resolution=self.resolution,
-                fps=self.fps
-            )
-            
-            # 连接信号
-            self.camera_thread.frame_ready.connect(self._on_frame_received)
-            
-            # 启动线程
-            self.camera_thread.start()
-            self.is_connected = True
-            
-            # 等待摄像头初始化
-            QtCore.QTimer.singleShot(1000, self._check_camera_status)
-            
-            return True
-            
-        except Exception as e:
-            print(f"启动摄像头错误: {e}")
-            self.is_connected = False
-            return False
+        # 智能重试机制
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"启动摄像头尝试 {attempt + 1}/{max_retries}...")
+                
+                # 创建并启动摄像头线程
+                self.camera_thread = CameraThread(
+                    camera_index=self.camera_index,
+                    resolution=self.resolution,
+                    fps=self.fps
+                )
+                
+                # 连接信号
+                self.camera_thread.frame_ready.connect(self._on_frame_received)
+                
+                # 启动线程
+                self.camera_thread.start()
+                self.is_connected = True
+                
+                # 等待线程初始化 - 改进的超时检测
+                # 等待线程开始运行，而不是等待整个初始化完成
+                wait_start = time.time()
+                while not self.camera_thread.isRunning() and (time.time() - wait_start) < 5.0:
+                    self.msleep(100)  # 每100ms检查一次
+                
+                if not self.camera_thread.isRunning():
+                    print("摄像头线程启动超时")
+                    raise Exception("摄像头线程启动超时")
+                
+                # 检查摄像头是否真正可用
+                QtCore.QTimer.singleShot(500, self._check_camera_status)
+                
+                print(f"摄像头 {self.camera_index} 启动成功")
+                return True
+                
+            except Exception as e:
+                print(f"启动摄像头尝试 {attempt + 1} 失败: {e}")
+                
+                # 清理资源
+                if self.camera_thread:
+                    self.camera_thread.stop()
+                    self.camera_thread = None
+                
+                # 如果不是最后一次尝试，等待后重试
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 500  # 递增等待时间
+                    print(f"等待 {wait_time}ms 后重试...")
+                    time.sleep(wait_time / 1000.0)  # 使用time.sleep而不是QThread.msleep
+        
+        print("所有启动尝试均失败")
+        self.is_connected = False
+        return False
     
     def stop_camera(self):
         """停止摄像头"""
@@ -352,7 +479,7 @@ class CameraController:
             self.camera_thread = None
         self.is_connected = False
         
-        if self.camera_widget:
+        if self.camera_widget and hasattr(self.camera_widget, 'setText'):
             self.camera_widget.setText("摄像头已停止")
     
     def _on_frame_received(self, frame: np.ndarray):

@@ -239,19 +239,32 @@ class ApplicationManager:
         )
         
         # 启动UI（在主线程中）
+        print("=== 开始创建Qt应用 ===")
         app = QtWidgets.QApplication(sys.argv)
+        print("Qt应用实例创建成功")
+        
+        print("=== 开始创建主窗口 ===")
         self.ui_window = MainWindow(self.cfg, self.mqtt_service, self.downloader, self.player)
+        print(f"主窗口创建成功，窗口对象: {self.ui_window}")
+        
+        print("=== 显示主窗口 ===")
         self.ui_window.show()
+        print(f"窗口显示状态: {self.ui_window.isVisible()}")
+        print(f"窗口几何信息: {self.ui_window.geometry()}")
+        print(f"窗口标题: {self.ui_window.windowTitle()}")
         
         # 注册UI健康检查
         def check_ui() -> bool:
             # UI通常总是健康的，除非有特定错误
-            return self.ui_window is not None and self.ui_window.isVisible()
+            ui_visible = self.ui_window is not None and self.ui_window.isVisible()
+            print(f"UI健康检查: 窗口存在={self.ui_window is not None}, 可见={ui_visible}")
+            return ui_visible
         
         self.health_check.register_component("ui", check_ui)
         
         # 启动健康检查
         self.health_check.start()
+        print("健康检查已启动")
         
         # 设置Qt应用关闭时的清理
         def handle_quit():
@@ -271,6 +284,7 @@ class ApplicationManager:
         
         # 运行Qt主循环
         try:
+            print("=== 开始Qt事件循环 ===")
             sys.exit(app.exec())
         except KeyboardInterrupt:
             self.log.info("收到键盘中断信号，执行清理")

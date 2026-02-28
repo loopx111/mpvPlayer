@@ -223,7 +223,7 @@ class EmbeddedMediaPipeCameraController(CameraController):
         print(f"控制器检测器实例ID: {id(self.detector)}")
         print(f"控制器检测器引用计数: {sys.getrefcount(self.detector) if 'sys' in locals() else 'N/A'}")
     
-    def start_camera(self, camera_index: int = 2, resolution: tuple = (640, 480), fps: int = 30) -> bool:
+    def start_camera(self, camera_index: int = None, resolution: tuple = (640, 480), fps: int = 30) -> bool:
         """启动摄像头 - 使用嵌入式摄像头线程"""
         try:
             # 停止当前摄像头（如果正在运行）
@@ -236,8 +236,12 @@ class EmbeddedMediaPipeCameraController(CameraController):
             print(f"传递给线程的检测器参数: {self.detector}")
             print(f"传递给线程的检测器参数类型: {type(self.detector)}")
             # 使用命名参数确保正确传递检测器实例
+            # 如果未指定摄像头索引，使用当前控制器的索引
+            target_camera_index = camera_index if camera_index is not None else self.camera_index
+            
+            print(f"使用摄像头索引: {target_camera_index}")
             self.camera_thread = EmbeddedMediaPipeCameraThread(
-                camera_index=camera_index, 
+                camera_index=target_camera_index, 
                 resolution=resolution, 
                 fps=fps, 
                 detector=self.detector
@@ -247,11 +251,11 @@ class EmbeddedMediaPipeCameraController(CameraController):
             
             # 启动分析功能 - 现在启用检测器进行测试
             self.analysis_enabled = True
-            print(f"嵌入式MediaPipe摄像头 {camera_index} 启动成功，分析功能已启用: {self.analysis_enabled}")
+            print(f"嵌入式MediaPipe摄像头 {target_camera_index} 启动成功，分析功能已启用: {self.analysis_enabled}")
             print(f"线程使用控制器检测器实例ID: {id(self.detector)}")
             print(f"线程实际使用的检测器实例ID: {id(self.camera_thread.detector)}")
             return True
-            
+                
         except Exception as e:
             print(f"启动摄像头失败: {e}")
             return False
@@ -260,6 +264,8 @@ class EmbeddedMediaPipeCameraController(CameraController):
                    fps: int = 15, enable_face_detection: bool = False):
         """初始化控制器 - 完全自定义初始化，不使用父类控件"""
         try:
+            print("=== 控制器初始化方法开始 ===")
+            
             # 设置参数
             self.resolution = resolution
             self.fps = fps
@@ -274,11 +280,15 @@ class EmbeddedMediaPipeCameraController(CameraController):
             print(f"控件创建完成，控件检测器实例ID: {id(self.camera_widget.detector)}")
             
             # 检测可用摄像头
+            print("开始检测可用摄像头...")
             self.available_cameras = self._detect_available_cameras()
+            print(f"摄像头检测完成，可用设备: {self.available_cameras}")
             
             if not self.available_cameras:
                 print("未找到可用摄像头设备，使用模拟模式")
-                self.camera_widget.setText("模拟模式: 无摄像头设备")
+                if hasattr(self.camera_widget, 'setText'):
+                    self.camera_widget.setText("模拟模式: 无摄像头设备")
+                print("=== 控制器初始化方法结束 (模拟模式) ===")
                 return True
             
             # 设置摄像头索引
@@ -290,16 +300,38 @@ class EmbeddedMediaPipeCameraController(CameraController):
             print(f"可用摄像头设备: {self.available_cameras}")
             print(f"使用摄像头索引: {self.camera_index}")
             
-            # 测试摄像头
-            camera_test_result = self._test_camera()
+            # 测试摄像头（使用带重试的测试）
+            print("=== 开始摄像头测试流程 ===")
+            print(f"调用 _test_camera_with_retry 方法...")
+            camera_test_result = self._test_camera_with_retry()
+            print(f"摄像头测试结果: {camera_test_result}")
             
             # 为了调试，不自动启用人脸检测，保持禁用状态
-            print(f"摄像头测试结果: {camera_test_result}, 分析功能保持禁用: {self.analysis_enabled}")
+            print(f"分析功能保持禁用: {self.analysis_enabled}")
             
+            # 如果测试成功，自动启动摄像头
+            if camera_test_result:
+                print("摄像头测试成功，开始自动启动摄像头...")
+                start_success = self.start_camera()
+                print(f"摄像头启动结果: {start_success}")
+                
+                # 添加启动后的详细状态检查
+                if start_success:
+                    print("摄像头已成功启动，检查摄像头线程状态...")
+                    if hasattr(self, 'camera_thread') and self.camera_thread:
+                        print(f"摄像头线程状态: 运行中={self.camera_thread.isRunning()}, 线程ID={self.camera_thread.nativeId() if hasattr(self.camera_thread, 'nativeId') else 'N/A'}")
+                else:
+                    print("摄像头启动失败，将触发重试机制")
+            else:
+                print("摄像头测试失败，跳过自动启动")
+            
+            print("=== 控制器初始化方法结束 ===")
             return camera_test_result
             
         except Exception as e:
             print(f"初始化嵌入式控制器时出错: {e}")
+            import traceback
+            print(f"详细错误信息: {traceback.format_exc()}")
             return False
     
     def enable_analysis(self):
@@ -397,61 +429,252 @@ class EmbeddedMediaPipeCameraController(CameraController):
             return self.enable_analysis()
     
     def _detect_available_cameras(self) -> list:
-        """检测可用摄像头设备"""
+        """智能检测可用摄像头设备 - 优化版本，避免阻塞"""
+        print("=== 开始检测可用摄像头 ===")
+        print(f"检测时间: {time.time()}")
         available_cameras = []
         
-        # 检查前10个摄像头索引
-        for i in range(10):
-            try:
-                cap = cv2.VideoCapture(i)
-                if cap.isOpened():
-                    # 尝试读取一帧来验证摄像头是否真正可用
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        available_cameras.append(i)
-                        print(f"检测到可用摄像头: {i}")
-                    else:
-                        print(f"摄像头 {i} 无法读取画面")
-                cap.release()
-            except Exception as e:
-                print(f"检测摄像头 {i} 时出错: {e}")
+        # 智能检测顺序：先检查已知有效索引，避免阻塞
+        preferred_indices = [0, 3]  # 根据日志分析，0和3是有效的，1和2会阻塞
         
+        print(f"优化检测顺序: {preferred_indices} (跳过已知阻塞索引1和2)")
+        
+        # 检查首选索引（带超时保护）
+        print("开始检测首选索引...")
+        for i in preferred_indices:
+            print(f"正在检测摄像头索引 {i}...")
+            
+            # 为每个检测添加独立的超时保护
+            start_time = time.time()
+            try:
+                result = self._test_camera_index_silent(i)
+                elapsed = time.time() - start_time
+                
+                if elapsed > 3.0:
+                    print(f"⚠ 摄像头索引 {i} 检测耗时 {elapsed:.2f}秒，可能存在阻塞")
+                
+                if result:
+                    available_cameras.append(i)
+                    print(f"✓ 检测到可用摄像头: {i}")
+                else:
+                    print(f"✗ 摄像头索引 {i} 不可用")
+            except Exception as e:
+                print(f"⚠ 摄像头索引 {i} 检测异常: {e}")
+        
+        # 如果已经找到有效的摄像头，立即返回，避免继续检测可能阻塞的索引
+        if available_cameras:
+            print(f"已找到有效摄像头 {available_cameras}，跳过其他检测")
+            print(f"摄像头检测完成，总可用设备: {available_cameras}")
+            print(f"检测结束时间: {time.time()}")
+            print("=== 摄像头检测完成 ===")
+            return available_cameras
+        
+        # 如果首选索引都没有找到，再尝试其他索引（带严格超时）
+        print("未找到有效摄像头，开始谨慎检测其他索引...")
+        other_indices = [1, 2, 4, 5, 6, 7, 8, 9]
+        
+        for i in other_indices:
+            print(f"谨慎检测摄像头索引 {i}...")
+            
+            # 严格超时保护：最多2秒
+            start_time = time.time()
+            try:
+                # 使用线程和超时机制
+                import threading
+                result = [None]
+                
+                def test_thread():
+                    try:
+                        result[0] = self._test_camera_index_silent(i)
+                    except:
+                        result[0] = False
+                
+                thread = threading.Thread(target=test_thread)
+                thread.daemon = True
+                thread.start()
+                thread.join(timeout=2.0)  # 最多等待2秒
+                
+                if thread.is_alive():
+                    print(f"⚠ 摄像头索引 {i} 检测超时，跳过")
+                    continue
+                
+                if result[0]:
+                    available_cameras.append(i)
+                    print(f"✓ 检测到可用摄像头: {i}")
+                else:
+                    print(f"✗ 摄像头索引 {i} 不可用")
+                    
+            except Exception as e:
+                print(f"⚠ 摄像头索引 {i} 检测异常: {e}")
+        
+        print(f"摄像头检测完成，总可用设备: {available_cameras}")
+        print(f"检测结束时间: {time.time()}")
+        print("=== 摄像头检测完成 ===")
         return available_cameras
+    
+    def _test_camera_index_silent(self, index: int) -> bool:
+        """静默测试摄像头索引，避免错误日志"""
+        start_time = time.time()
+        try:
+            # 使用CAP_ANY后端，避免V4L2错误
+            cap = cv2.VideoCapture(index, cv2.CAP_ANY)
+            
+            # 添加超时检查
+            if time.time() - start_time > 5.0:
+                print(f"⚠ 摄像头索引 {index} 打开超时，跳过")
+                if cap.isOpened():
+                    cap.release()
+                return False
+            
+            if not cap.isOpened():
+                return False
+            
+            # 设置快速超时
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            
+            # 添加读取超时保护
+            read_start = time.time()
+            ret, frame = cap.read()
+            
+            if time.time() - read_start > 3.0:
+                print(f"⚠ 摄像头索引 {index} 读取超时，跳过")
+                cap.release()
+                return False
+            
+            cap.release()
+            
+            return ret and frame is not None
+        except Exception as e:
+            # 记录异常但不抛出
+            if time.time() - start_time > 8.0:
+                print(f"⚠ 摄像头索引 {index} 测试超时: {e}")
+            return False
     
     def _test_camera(self) -> bool:
         """测试摄像头是否可用"""
+        print(f"=== 进入 _test_camera 方法 ===")
+        print(f"当前实例属性检查: hasattr camera_index={hasattr(self, 'camera_index')}")
+        
         try:
+            # 确保摄像头索引已正确设置
+            if not hasattr(self, 'camera_index') or self.camera_index is None:
+                print("摄像头索引未设置，尝试自动设置...")
+                if hasattr(self, 'available_cameras') and self.available_cameras:
+                    self.camera_index = self.available_cameras[0]
+                    print(f"✓ 自动设置摄像头索引为: {self.camera_index}")
+                else:
+                    print("✗ 没有可用摄像头设备")
+                    return False
+            
+            print(f"当前摄像头索引: {self.camera_index}")
+            
             if self.camera_index not in self.available_cameras:
-                print(f"摄像头索引 {self.camera_index} 不在可用设备列表中")
+                print(f"✗ 摄像头索引 {self.camera_index} 不在可用设备列表中，可用设备: {self.available_cameras}")
                 return False
             
+            print(f"✓ 摄像头索引验证通过: {self.camera_index}")
+            print(f"开始测试摄像头 {self.camera_index}...")
+            
+            # 尝试不同的后端打开摄像头
+            print("尝试使用默认后端打开摄像头...")
             cap = cv2.VideoCapture(self.camera_index)
+            
             if cap.isOpened():
+                print(f"✓ 摄像头 {self.camera_index} 打开成功")
+                
                 # 设置参数并测试读取
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+                print("设置摄像头参数...")
+                try:
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+                    print(f"参数设置完成: {self.resolution[0]}x{self.resolution[1]}")
+                except Exception as e:
+                    print(f"参数设置失败: {e}")
                 
                 # 尝试读取几帧
                 success_count = 0
-                for _ in range(5):
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        success_count += 1
+                print("开始帧读取测试...")
+                for i in range(5):
+                    try:
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            success_count += 1
+                            print(f"✓ 第{i+1}帧读取成功: shape={frame.shape}")
+                        else:
+                            print(f"✗ 第{i+1}帧读取失败, ret={ret}, frame is None={frame is None}")
+                    except Exception as e:
+                        print(f"⚠ 第{i+1}帧读取异常: {e}")
                 
                 cap.release()
+                print(f"摄像头资源已释放")
                 
                 if success_count > 0:
-                    print(f"摄像头 {self.camera_index} 测试通过")
+                    print(f"✓ 摄像头 {self.camera_index} 测试通过，成功读取 {success_count}/5 帧")
                     return True
                 else:
-                    print(f"摄像头 {self.camera_index} 无法读取画面")
+                    print(f"✗ 摄像头 {self.camera_index} 无法读取画面")
                     return False
             else:
-                print(f"无法打开摄像头 {self.camera_index}")
-                return False
+                print(f"✗ 无法打开摄像头 {self.camera_index}")
+                # 尝试使用其他后端
+                print("尝试使用CAP_ANY后端...")
+                cap = cv2.VideoCapture(self.camera_index, cv2.CAP_ANY)
+                if cap.isOpened():
+                    print(f"✓ 使用CAP_ANY后端成功打开摄像头")
+                    cap.release()
+                    return True
+                else:
+                    print(f"✗ 使用CAP_ANY后端也无法打开摄像头")
+                    return False
         except Exception as e:
-            print(f"测试摄像头错误: {e}")
+            print(f"⚠ 测试摄像头错误: {e}")
+            import traceback
+            print("详细错误信息:")
+            traceback.print_exc()
             return False
+
+    def _test_camera_with_retry(self, max_retries: int = 3, delay: float = 2.0) -> bool:
+        """带重试的摄像头测试，专门处理设备重启后第一次启动问题"""
+        print(f"=== 进入 _test_camera_with_retry 方法 ===")
+        print(f"最大重试次数: {max_retries}, 重试延迟: {delay}秒")
+        print(f"当前摄像头索引: {self.camera_index if hasattr(self, 'camera_index') else '未设置'}")
+        print(f"可用摄像头列表: {self.available_cameras if hasattr(self, 'available_cameras') else '未检测'}")
+        
+        for attempt in range(max_retries):
+            print(f"=== 摄像头测试尝试 {attempt + 1}/{max_retries} ===")
+            
+            try:
+                print(f"调用 _test_camera() 方法...")
+                result = self._test_camera()
+                print(f"_test_camera() 返回结果: {result}")
+                
+                if result:
+                    print(f"✓ 摄像头测试成功，尝试 {attempt + 1} 次")
+                    return True
+                else:
+                    print(f"✗ 摄像头测试失败，尝试 {attempt + 1} 次")
+                    if attempt < max_retries - 1:
+                        print(f"等待 {delay} 秒后重试...")
+                        import time
+                        time.sleep(delay)
+                    else:
+                        print("✗ 摄像头测试多次重试后仍失败")
+                        return False
+            except Exception as e:
+                print(f"⚠ 摄像头测试异常: {e}")
+                import traceback
+                traceback.print_exc()
+                
+                if attempt < max_retries - 1:
+                    print(f"等待 {delay} 秒后重试...")
+                    import time
+                    time.sleep(delay)
+                else:
+                    print("⚠ 摄像头测试多次重试后仍异常")
+                    return False
+        
+        print("=== _test_camera_with_retry 方法结束 ===")
+        return False
 
     def _on_frame_received(self, frame: np.ndarray):
         """处理接收到的帧 - 适配嵌入式MediaPipe控件"""

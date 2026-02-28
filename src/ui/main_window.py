@@ -56,16 +56,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def _create_status_panel(self) -> QtWidgets.QGroupBox:
         """创建状态监控面板"""
         panel = QtWidgets.QGroupBox("系统状态")
+        panel.setStyleSheet("font-size: 16px;")
         layout = QtWidgets.QVBoxLayout()
         
         # 系统信息
         sys_group = QtWidgets.QGroupBox("系统信息")
+        sys_group.setStyleSheet("font-size: 14px;")
         sys_layout = QtWidgets.QFormLayout()
         
         self.time_label = QtWidgets.QLabel("加载中...")
+        self.time_label.setStyleSheet("font-size: 14px;")
         self.uptime_label = QtWidgets.QLabel("0 小时 0 分钟")
+        self.uptime_label.setStyleSheet("font-size: 14px;")
         self.mqtt_status = QtWidgets.QLabel("未连接")
-        self.mqtt_status.setStyleSheet("color: red; font-weight: bold;")
+        self.mqtt_status.setStyleSheet("color: red; font-size: 14px;")
         
         sys_layout.addRow("当前时间:", self.time_label)
         sys_layout.addRow("运行时间:", self.uptime_label)
@@ -74,14 +78,17 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # 播放状态
         play_group = QtWidgets.QGroupBox("播放状态")
+        play_group.setStyleSheet("font-size: 14px;")
         play_layout = QtWidgets.QFormLayout()
         
         self.current_file = QtWidgets.QLabel("无")
+        self.current_file.setStyleSheet("font-size: 14px;")
         self.play_status = QtWidgets.QLabel("未播放")
-        self.play_status.setStyleSheet("color: orange; font-weight: bold;")
+        self.play_status.setStyleSheet("color: orange; font-size: 14px;")
         self.queue_count = QtWidgets.QLabel("0")
+        self.queue_count.setStyleSheet("font-size: 14px;")
         self.loop_status = QtWidgets.QLabel("关闭")
-        self.loop_status.setStyleSheet("color: green; font-weight: bold;")
+        self.loop_status.setStyleSheet("color: green; font-size: 14px;")
         
         play_layout.addRow("当前文件:", self.current_file)
         play_layout.addRow("播放状态:", self.play_status)
@@ -91,11 +98,15 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # 下载状态
         download_group = QtWidgets.QGroupBox("下载状态")
+        download_group.setStyleSheet("font-size: 14px;")
         download_layout = QtWidgets.QFormLayout()
         
         self.download_queue = QtWidgets.QLabel("0")
+        self.download_queue.setStyleSheet("font-size: 14px;")
         self.download_progress = QtWidgets.QLabel("0%")
+        self.download_progress.setStyleSheet("font-size: 14px;")
         self.last_update = QtWidgets.QLabel("无")
+        self.last_update.setStyleSheet("font-size: 14px;")
         
         download_layout.addRow("下载队列:", self.download_queue)
         download_layout.addRow("下载进度:", self.download_progress)
@@ -104,16 +115,17 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # 摄像头显示区域（简化版本，仅保留显示画面）
         camera_group = QtWidgets.QGroupBox("摄像头监控")
+        camera_group.setStyleSheet("font-size: 14px;")
         camera_layout = QtWidgets.QVBoxLayout()
         
         # 摄像头状态显示
         self.camera_status = QtWidgets.QLabel("摄像头自动运行中")
-        self.camera_status.setStyleSheet("color: green; font-weight: bold;")
+        self.camera_status.setStyleSheet("color: green; font-size: 14px;")
         
         # 摄像头画面显示
         camera_layout.addWidget(self.camera_status)
         
-        # 创建摄像头显示区域（与测试脚本保持一致，640x480）
+        # 创建摄像头显示区域（与测试脚本保持一致，640x480）- 保持原有尺寸不变
         self.camera_display_area = QtWidgets.QWidget()
         camera_display_layout = QtWidgets.QVBoxLayout()
         self.camera_display_area.setLayout(camera_display_layout)
@@ -134,15 +146,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def _create_control_panel(self) -> QtWidgets.QGroupBox:
         """创建控制面板 - 替换为广告关注度显示"""
         panel = QtWidgets.QGroupBox("广告关注度统计")
+        panel.setStyleSheet("font-size: 16px;")
         layout = QtWidgets.QVBoxLayout()
         
         # 当前广告关注度
         current_ad_group = QtWidgets.QGroupBox("当前广告")
+        current_ad_group.setStyleSheet("font-size: 14px;")
         current_layout = QtWidgets.QFormLayout()
         
         self.current_ad_label = QtWidgets.QLabel("无广告播放")
+        self.current_ad_label.setStyleSheet("font-size: 14px;")
         self.current_ad_score = QtWidgets.QLabel("0")
-        self.current_ad_score.setStyleSheet("font-size: 24px; font-weight: bold; color: #2196F3;")
+        self.current_ad_score.setStyleSheet("font-size: 28px; color: #2196F3;")
         
         current_layout.addRow("广告名称:", self.current_ad_label)
         current_layout.addRow("关注度得分:", self.current_ad_score)
@@ -150,29 +165,45 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # 历史广告排名
         history_group = QtWidgets.QGroupBox("广告排名")
+        history_group.setStyleSheet("font-size: 14px;")
         history_layout = QtWidgets.QVBoxLayout()
         
         self.ad_ranking_widget = QtWidgets.QListWidget()
         self.ad_ranking_widget.setMaximumHeight(300)
+        self.ad_ranking_widget.setStyleSheet("font-size: 14px;")
         history_layout.addWidget(self.ad_ranking_widget)
         
         history_group.setLayout(history_layout)
         
         # 详细统计信息
         stats_group = QtWidgets.QGroupBox("详细统计")
+        stats_group.setStyleSheet("font-size: 28px;")
         stats_layout = QtWidgets.QFormLayout()
         
         self.attention_ratio_label = QtWidgets.QLabel("0%")
+        self.attention_ratio_label.setStyleSheet("font-size: 28px;")
         self.absolute_attention_label = QtWidgets.QLabel("0")
+        self.absolute_attention_label.setStyleSheet("font-size: 28px;")
         self.continuity_label = QtWidgets.QLabel("0%")
+        self.continuity_label.setStyleSheet("font-size: 28px;")
         self.consistency_label = QtWidgets.QLabel("0%")
+        self.consistency_label.setStyleSheet("font-size: 28px;")
         self.coverage_label = QtWidgets.QLabel("0%")
+        self.coverage_label.setStyleSheet("font-size: 28px;")
+        
+        # 新增两个指标
+        self.current_face_count_label = QtWidgets.QLabel("0")
+        self.current_face_count_label.setStyleSheet("font-size: 28px;")
+        self.current_gazing_count_label = QtWidgets.QLabel("0")
+        self.current_gazing_count_label.setStyleSheet("font-size: 28px;")
         
         stats_layout.addRow("注意力比率:", self.attention_ratio_label)
         stats_layout.addRow("绝对关注规模:", self.absolute_attention_label)
         stats_layout.addRow("持续关注深度:", self.continuity_label)
         stats_layout.addRow("关注稳定性:", self.consistency_label)
         stats_layout.addRow("关注覆盖率:", self.coverage_label)
+        stats_layout.addRow("当前人脸数:", self.current_face_count_label)
+        stats_layout.addRow("关注数:", self.current_gazing_count_label)
         
         stats_group.setLayout(stats_layout)
         
@@ -399,6 +430,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.consistency_label.setText(f"{breakdown['consistency_score']:.1f}")
                         self.coverage_label.setText(f"{breakdown['efficiency_score']:.1f}")
                         
+                        # 更新新指标：当前人脸数和关注数（显示当前帧的实际数值）
+                        # 使用当前帧的实时数据而不是平均值
+                        self.current_face_count_label.setText(f"{current_face_count}")
+                        self.current_gazing_count_label.setText(f"{current_gazing_faces}")
+                        
                         # 显示5个维度的计算参数和结果
                         self._print_five_dimension_calculation(latest_score)
                     else:
@@ -425,6 +461,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             self.continuity_label.setText(f"{continuity_ratio*100:.1f}% (估算)")
                             self.consistency_label.setText(f"{consistency_ratio*100:.1f}% (估算)")
                             self.coverage_label.setText(f"{efficiency_ratio*100:.1f}% (估算)")
+                            
+                            # 更新新指标：当前人脸数和关注数（显示当前帧的实际数值）
+                            # 使用当前帧的实时数据而不是平均值
+                            self.current_face_count_label.setText(f"{current_face_count}")
+                            self.current_gazing_count_label.setText(f"{current_gazing_faces}")
                         
                         print(f"广告进行中: {current_ad_id}, 等待结束计算...")
                 else:
@@ -712,37 +753,99 @@ class MainWindow(QtWidgets.QMainWindow):
     def _setup_camera(self):
         """初始化摄像头设置"""
         try:
-            # 初始化MediaPipe摄像头控制器（默认使用摄像头2并启用人脸检测）
+            print("=== 摄像头设置开始 ===")
+            print(f"摄像头控制器对象: {type(self.camera_controller)}")
+            print(f"摄像头控制器ID: {id(self.camera_controller)}")
+            
+            # 初始化MediaPipe摄像头控制器（使用第一个可用的摄像头并启用人脸检测）
+            print("开始初始化摄像头控制器...")
+            print(f"调用initialize方法前，检查控制器状态...")
+            
             success = self.camera_controller.initialize(
-                camera_index=2,  # 默认使用摄像头2
+                camera_index=None,  # 设置为None，让控制器自动选择可用摄像头
                 resolution=(640, 480), 
                 fps=15,
                 enable_face_detection=True  # 启用人脸检测
             )
             
+            print(f"摄像头控制器initialize方法返回结果: {success}")
+            
             if success:
                 print("MediaPipe摄像头控制器初始化成功")
                 
+                # 检查摄像头线程状态
+                if hasattr(self.camera_controller, 'camera_thread'):
+                    print(f"摄像头线程存在: {self.camera_controller.camera_thread}")
+                    if self.camera_controller.camera_thread:
+                        print(f"摄像头线程运行状态: {self.camera_controller.camera_thread.isRunning()}")
+                
                 # 添加摄像头控件到界面
+                print("开始更新摄像头显示...")
                 self._update_camera_display()
                 
-                # 自动启动摄像头（简化版本）
-                success = self.camera_controller.start_camera()
+                # 检查是否已经通过初始化自动启动了摄像头
+                if hasattr(self.camera_controller, 'camera_thread') and self.camera_controller.camera_thread:
+                    if self.camera_controller.camera_thread.isRunning():
+                        print("摄像头已通过初始化自动启动，无需再次启动")
+                        self.camera_status.setText("摄像头自动运行中")
+                        self.camera_status.setStyleSheet("color: green; font-weight: bold;")
+                        print("=== 摄像头设置结束 ===")
+                        return
+                
+                # 自动启动摄像头（带重试机制）
+                print("开始自动启动摄像头（带重试机制）...")
+                success = self._start_camera_with_retry(max_retries=3, delay=2.0)
                 if success:
                     self.camera_status.setText("摄像头自动运行中")
                     self.camera_status.setStyleSheet("color: green; font-weight: bold;")
                     print("摄像头自动启动成功")
                 else:
                     print("摄像头自动启动失败")
+                    self.camera_status.setText("摄像头启动失败")
+                    self.camera_status.setStyleSheet("color: red; font-weight: bold;")
             else:
                 print("摄像头控制器初始化失败")
                 self.camera_status.setText("摄像头初始化失败")
                 self.camera_status.setStyleSheet("color: red; font-weight: bold;")
                 
+            print("=== 摄像头设置结束 ===")
+                
         except Exception as e:
             print(f"摄像头设置错误: {e}")
+            import traceback
+            traceback.print_exc()
             self.camera_status.setText(f"摄像头错误: {e}")
             self.camera_status.setStyleSheet("color: red; font-weight: bold;")
+    
+    def _start_camera_with_retry(self, max_retries: int = 3, delay: float = 2.0) -> bool:
+        """带重试的摄像头启动，专门处理设备重启后第一次启动问题"""
+        for attempt in range(max_retries):
+            print(f"摄像头启动尝试 {attempt + 1}/{max_retries}...")
+            
+            try:
+                success = self.camera_controller.start_camera()
+                if success:
+                    print(f"摄像头启动成功，尝试 {attempt + 1} 次")
+                    return True
+                else:
+                    if attempt < max_retries - 1:
+                        print(f"摄像头启动失败，等待 {delay} 秒后重试...")
+                        import time
+                        time.sleep(delay)
+                    else:
+                        print("摄像头启动多次重试后仍失败")
+                        return False
+            except Exception as e:
+                print(f"摄像头启动异常: {e}")
+                if attempt < max_retries - 1:
+                    print(f"等待 {delay} 秒后重试...")
+                    import time
+                    time.sleep(delay)
+                else:
+                    print("摄像头启动多次重试后仍异常")
+                    return False
+        
+        return False
     
 
     

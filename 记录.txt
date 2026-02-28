@@ -1,4 +1,5 @@
-运行方法：
+运行方法:
+cd /home/kylin/download/
 source venv/bin/activate
 export DISPLAY=:0
 ./start_kylin.sh
