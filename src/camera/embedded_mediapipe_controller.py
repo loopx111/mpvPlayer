@@ -159,12 +159,16 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                     if self.enable_controller_debug:
                         print(f"帧{self.frame_counter} - 读取原始帧: shape={frame.shape}")
                     
+                    # 统一处理翻转和镜像操作（所有路径都执行）
+                    frame_flipped = cv2.flip(frame, 0)  # 垂直翻转
+                    frame_mirrored = cv2.flip(frame_flipped, 1)  # 水平镜像
+                    
                     if self.analysis_enabled:
                         if self.enable_controller_debug:
                             print(f"帧{self.frame_counter} - 检测路径: analysis_enabled={self.analysis_enabled}, 调用检测器")
                         # 使用嵌入式检测器处理帧
                         try:
-                            results, display_frame = self.detector.process_frame(frame, self.frame_counter)
+                            results, display_frame = self.detector.process_frame(frame_mirrored, self.frame_counter)
                             # 注意：process_frame已经包含了绘制，无需再次调用draw_results
                             
                             # 转换为RGB格式用于显示
@@ -174,18 +178,14 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                         except Exception as e:
                             if self.enable_controller_debug:
                                 print(f"帧{self.frame_counter} - 检测处理失败: {e}")
-                            # 失败时也需要进行正确的翻转，确保画面方向一致
-                            frame_flipped = cv2.flip(frame, 0)  # 垂直翻转
-                            display_frame = cv2.flip(frame_flipped, 1)  # 水平镜像
-                            frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+                            # 检测失败时直接使用翻转镜像后的帧
+                            frame_rgb = cv2.cvtColor(frame_mirrored, cv2.COLOR_BGR2RGB)
                             self.frame_processed.emit(frame_rgb)
                     else:
                         if self.enable_controller_debug:
                             print(f"帧{self.frame_counter} - 未检测路径: analysis_enabled={self.analysis_enabled}, 仅进行基础翻转")
-                        # 未启用检测时也需要进行正确的翻转，确保画面方向一致
-                        frame_flipped = cv2.flip(frame, 0)  # 垂直翻转
-                        display_frame = cv2.flip(frame_flipped, 1)  # 水平镜像
-                        frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+                        # 未启用检测时直接使用翻转镜像后的帧
+                        frame_rgb = cv2.cvtColor(frame_mirrored, cv2.COLOR_BGR2RGB)
                         self.frame_processed.emit(frame_rgb)
                 else:
                     if self.enable_controller_debug:

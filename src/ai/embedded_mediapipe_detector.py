@@ -256,14 +256,9 @@ class EmbeddedMediaPipeDetector:
         if self.enable_debug_logs:
             print(f"帧{frame_number} - 检测器开始处理")
         
-        # 摄像头垂直翻转（因为摄像头是倒置安装的）
-        frame_flipped = cv2.flip(frame, 0)
-        
-        # 先进行水平镜像，然后在镜像后的帧上进行检测，确保关键点坐标系正确
-        frame_mirrored = cv2.flip(frame_flipped, 1)
-        
-        # 使用镜像后的帧进行检测
-        rgb_frame = cv2.cvtColor(frame_mirrored, cv2.COLOR_BGR2RGB)
+        # 假设控制器已经进行了正确的翻转和镜像操作
+        # 直接使用传入的帧进行检测
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # 检测人脸
         start_time_detect = time.time()
@@ -358,8 +353,8 @@ class EmbeddedMediaPipeDetector:
         current_time = time.time() - self.start_time
         self.detection_results['fps'] = self.frame_count / current_time if current_time > 0 else 0
         
-        # 此时frame_mirrored已经是经过垂直翻转和水平镜像的帧，直接使用
-        display_frame = frame_mirrored
+        # 直接在传入的帧上绘制结果
+        display_frame = frame
         
         # 性能优化：减少绘制细节
         if results.multi_face_landmarks:
