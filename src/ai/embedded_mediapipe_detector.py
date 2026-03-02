@@ -169,15 +169,14 @@ class EmbeddedMediaPipeDetector:
         
         # 绘制绿色编号
         if is_gazing:
-            # 将编号放在关键点图形的正上方（人头上方）
-            text_x_pos = (x_min + x_max) // 2  # 水平居中
-            text_y_pos = y_min - 10  # 在人脸边界框上方
+            # 智能确定编号位置和角度：根据人脸关键点确定脸的方向
+            text_x_pos, text_y_pos, text_angle = self._calculate_number_position_and_angle(face_landmarks, w, h, x_min, y_min, x_max, y_max)
             
-            # 绘制绿色数字编号
+            # 绘制绿色数字编号（支持旋转）
             face_num = face_index + 1
-            cv2.putText(frame, f"{face_num}", 
-                       (text_x_pos, text_y_pos), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 255, 0), 3)  # 绿色编号，字体增大一倍
+            
+            # 使用旋转文本函数绘制
+            frame = self._draw_rotated_text(frame, f"{face_num}", (text_x_pos, text_y_pos), text_angle)
         
         return {
             'face_index': face_index,
@@ -188,6 +187,81 @@ class EmbeddedMediaPipeDetector:
             'y_max': y_max,
             'landmarks': face_landmarks
         }
+    
+    def _calculate_number_position_and_angle(self, face_landmarks, w, h, x_min, y_min, x_max, y_max):
+        """计算关注标记的位置和角度，数字保持水平不倾斜"""
+        # 计算人脸边界框的中心点和头顶位置
+        face_center_x = (x_min + x_max) // 2
+        
+        # 数字位置：放在人脸中心正上方，在头顶位置
+        # 考虑到旋转-90度的影响，需要调整x坐标位置
+        text_x_pos = face_center_x + 100  # 向右偏移100像素
+        text_y_pos = y_min - 30  # 在边界框上方30像素
+        
+        # 数字角度：保持水平基础上做顺时针90度旋转
+        text_angle = -90
+        
+        # 确保位置在图像范围内
+        text_x_pos = max(5, min(w - 30, text_x_pos))
+        text_y_pos = max(30, min(h - 10, text_y_pos))
+        
+        return text_x_pos, text_y_pos, text_angle
+    
+    def _draw_rotated_text(self, frame, text, position, angle, font_scale=1.6, color=(0, 255, 0), thickness=3):
+        """绘制旋转文本 - 简化版本"""
+        # 如果角度接近0，直接绘制
+        if abs(angle) < 5:
+            cv2.putText(frame, text, position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+            return frame
+        
+        # 获取文本大小
+        (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+        
+        # 创建一个更大的图像来容纳旋转后的文本
+        padding = 50
+        text_img = np.zeros((text_height + padding, text_width + padding, 3), dtype=np.uint8)
+        
+        # 在文本图像中心绘制文本
+        text_x = (text_img.shape[1] - text_width) // 2
+        text_y = (text_img.shape[0] + text_height) // 2
+        cv2.putText(text_img, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
+        
+        # 计算旋转中心（文本图像中心）
+        center = (text_img.shape[1] // 2, text_img.shape[0] // 2)
+        
+        # 旋转文本图像
+        rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rotated_text = cv2.warpAffine(text_img, rotation_matrix, (text_img.shape[1], text_img.shape[0]))
+        
+        # 找到旋转文本的非零像素
+        mask = rotated_text > 0
+        
+        # 计算在原始图像中的位置
+        x_start = max(0, position[0] - rotated_text.shape[1] // 2)
+        y_start = max(0, position[1] - rotated_text.shape[0] // 2)
+        x_end = min(frame.shape[1], x_start + rotated_text.shape[1])
+        y_end = min(frame.shape[0], y_start + rotated_text.shape[0])
+        
+        # 计算ROI尺寸
+        roi_height = y_end - y_start
+        roi_width = x_end - x_start
+        
+        if roi_height > 0 and roi_width > 0:
+            # 提取ROI区域
+            roi = frame[y_start:y_end, x_start:x_end]
+            
+            # 提取对应的旋转文本区域
+            text_roi = rotated_text[0:roi_height, 0:roi_width]
+            
+            # 创建文本掩码
+            text_mask = text_roi > 0
+            
+            # 使用掩码将文本叠加到ROI上
+            roi[text_mask] = text_roi[text_mask]
+        
+        return frame
+    
+
     
     class FrameSkipOptimizer:
         """智能帧跳过策略优化器 - 性能优化版本"""
@@ -368,26 +442,7 @@ class EmbeddedMediaPipeDetector:
                 )
                 face_positions.append(face_info)
         
-        # 只显示实时检测结果统计信息（仅当有人脸时）
-        results_info = self.detection_results
-        text_x = 10
-        
-        # 只在有人脸时显示检测结果文字
-        if results.multi_face_landmarks:
-            # 计算Gaze Ratio（注视比例）
-            gaze_ratio = (results_info['gazing_faces'] / len(results.multi_face_landmarks)) * 100
-            
-            # 绘制实时统计信息（蓝色文字）
-            cv2.putText(display_frame, f"FPS: {results_info['fps']:.1f}", (text_x, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
-            cv2.putText(display_frame, f"DetectTime: {results_info['inference_time']:.1f}ms", (text_x, 50), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
-            cv2.putText(display_frame, f"Face: {results_info['face_count']}", (text_x, 70), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
-            cv2.putText(display_frame, f"Gazing: {results_info['gazing_faces']}", (text_x, 90), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
-            cv2.putText(display_frame, f"Gaze Ratio: {gaze_ratio:.1f}%", (text_x, 110), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 1)
+        # 统计信息现在在Qt界面层绘制，避免受到旋转影响
         
         if self.enable_debug_logs:
             print(f"帧{frame_number} - 检测器处理完成")

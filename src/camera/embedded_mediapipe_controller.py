@@ -38,6 +38,9 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
             self.detector = detector
             print(f"控件使用共享检测器实例，ID: {id(detector)}")
         
+        # 显示配置 - 可配置的旋转角度
+        self.display_rotation: int = 0  # 默认不旋转，0度
+        
         # 显示图像
         self.image_label = QtWidgets.QLabel()
         self.image_label.setAlignment(QtCore.Qt.AlignCenter)
@@ -50,6 +53,7 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         self.setLayout(main_layout)
         
         print("嵌入式MediaPipe摄像头控件初始化完成")
+        print(f"默认显示旋转角度: {self.display_rotation}度")
     
     def process_frame(self, frame):
         """处理摄像头帧 - 现在只负责显示，不进行检测"""
@@ -66,11 +70,93 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
     
 
     
+    def set_display_rotation(self, angle: int):
+        """设置显示旋转角度"""
+        self.display_rotation = angle
+        print(f"显示旋转角度设置为: {angle}度")
+    
     def update_image(self, qimage):
-        """更新显示的图像"""
+        """更新显示的图像（包含统计信息绘制）"""
         try:
+            # 先应用旋转变换（如果不为0）
+            if self.display_rotation != 0:
+                # 创建变换矩阵并应用旋转
+                transform = QtGui.QTransform()
+                transform.rotate(self.display_rotation)
+                rotated_image = qimage.transformed(transform, QtCore.Qt.SmoothTransformation)
+            else:
+                rotated_image = qimage
+            
+            # 在旋转后的图像上绘制统计信息（确保文字方向与系统一致）
+            image_with_stats = rotated_image.copy()
+            painter = QtGui.QPainter(image_with_stats)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            
+            # 获取统计信息
+            stats = self.get_detection_stats()
+            
+            # 设置字体和颜色
+            font = QtGui.QFont("Arial", 10)
+            painter.setFont(font)
+            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0)))  # 红色文字
+            
+            # 根据旋转角度动态调整文字位置
+            width = image_with_stats.width()
+            height = image_with_stats.height()
+            
+            if self.display_rotation == -90:  # 逆时针旋转90度
+                # 旋转后，文字应该显示在右侧（旋转后原本的右侧变成了上方）
+                text_x = width - 150  # 右侧留出150像素空间
+                line_height = 20
+                
+                # 总是显示基本统计信息
+                painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
+                painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
+                painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
+                
+                # 只在有人脸时显示人脸相关统计
+                if stats.get('current_face_count', 0) > 0:
+                    # 计算Gaze Ratio
+                    gazing_faces = stats.get('current_gazing_faces', 0)
+                    face_count = stats.get('current_face_count', 1)
+                    gaze_ratio = (gazing_faces / face_count) * 100 if face_count > 0 else 0
+                    
+                    painter.drawText(text_x, 80, f"Face: {stats.get('current_face_count', 0)}")
+                    painter.drawText(text_x, 100, f"Gazing: {gazing_faces}")
+                    painter.drawText(text_x, 120, f"Gaze Ratio: {gaze_ratio:.1f}%")
+                else:
+                    painter.drawText(text_x, 80, "Face: 0")
+                    painter.drawText(text_x, 100, "Gazing: 0")
+                    painter.drawText(text_x, 120, "Gaze Ratio: 0.0%")
+            else:
+                # 默认位置（上方左侧）
+                text_x = 10
+                line_height = 20
+                
+                # 总是显示基本统计信息
+                painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
+                painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
+                painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
+                
+                # 只在有人脸时显示人脸相关统计
+                if stats.get('current_face_count', 0) > 0:
+                    # 计算Gaze Ratio
+                    gazing_faces = stats.get('current_gazing_faces', 0)
+                    face_count = stats.get('current_face_count', 1)
+                    gaze_ratio = (gazing_faces / face_count) * 100 if face_count > 0 else 0
+                    
+                    painter.drawText(text_x, 80, f"Face: {stats.get('current_face_count', 0)}")
+                    painter.drawText(text_x, 100, f"Gazing: {gazing_faces}")
+                    painter.drawText(text_x, 120, f"Gaze Ratio: {gaze_ratio:.1f}%")
+                else:
+                    painter.drawText(text_x, 80, "Face: 0")
+                    painter.drawText(text_x, 100, "Gazing: 0")
+                    painter.drawText(text_x, 120, "Gaze Ratio: 0.0%")
+            
+            painter.end()
+            
             # 缩放图像以适应显示区域
-            scaled_image = qimage.scaled(
+            scaled_image = image_with_stats.scaled(
                 self.image_label.size(), 
                 QtCore.Qt.KeepAspectRatio, 
                 QtCore.Qt.SmoothTransformation
@@ -248,6 +334,10 @@ class EmbeddedMediaPipeCameraController(CameraController):
             )
             self.camera_thread.frame_processed.connect(self._on_frame_received)
             self.camera_thread.start()
+            
+            # 设置显示旋转（如果需要）- 逆时针旋转90度
+            if hasattr(self.camera_widget, 'set_display_rotation'):
+                self.camera_widget.set_display_rotation(-90)  # 逆时针旋转90度
             
             # 启动分析功能 - 现在启用检测器进行测试
             self.analysis_enabled = True
