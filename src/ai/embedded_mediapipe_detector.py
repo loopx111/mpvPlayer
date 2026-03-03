@@ -434,9 +434,29 @@ class EmbeddedMediaPipeDetector:
             'frame_processed': self.frame_count  # 使用更新后的帧计数
         }
         
-        # 更新FPS统计
-        current_time = time.time() - self.start_time
-        self.detection_results['fps'] = self.frame_count / current_time if current_time > 0 else 0
+        # 更新FPS统计 - 直接使用实时计算
+        current_time = time.time()
+        
+        # 简单的实时FPS计算
+        if not hasattr(self, 'last_fps_time'):
+            self.last_fps_time = current_time
+            self.fps_frame_count = 0
+        
+        self.fps_frame_count += 1
+        time_diff = current_time - self.last_fps_time
+        
+        # 每帧都更新FPS，保持实时性
+        if time_diff > 0:
+            fps = self.fps_frame_count / time_diff
+        else:
+            fps = 0
+        
+        self.detection_results['fps'] = fps
+        
+        # 每0.5秒重置计数器，避免累计误差
+        if time_diff >= 0.5:
+            self.last_fps_time = current_time
+            self.fps_frame_count = 0
         
         # 直接在传入的帧上绘制结果
         display_frame = frame

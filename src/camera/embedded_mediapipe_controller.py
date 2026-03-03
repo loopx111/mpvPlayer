@@ -122,7 +122,7 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
                     line_height = 20
                     
                     # 总是显示基本统计信息
-                    painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
+                    painter.drawText(text_x, 20, f"FPS: {stats.get('current_fps', 0):.1f}")
                     painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
                     painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
                     
@@ -146,7 +146,7 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
                     line_height = 20
                     
                     # 总是显示基本统计信息
-                    painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
+                    painter.drawText(text_x, 20, f"FPS: {stats.get('current_fps', 0):.1f}")
                     painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
                     painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
                     
@@ -187,7 +187,10 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
     
     def get_detection_stats(self):
         """获取检测统计信息"""
-        return self.detector.get_detection_stats()
+        stats = self.detector.get_detection_stats()
+        # 添加实时FPS信息
+        stats['current_fps'] = self.detector.detection_results.get('fps', 0)
+        return stats
     
     def reset_stats(self):
         """重置统计信息"""
