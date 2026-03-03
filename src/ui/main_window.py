@@ -125,11 +125,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # 摄像头画面显示
         camera_layout.addWidget(self.camera_status)
         
-        # 创建摄像头显示区域（与测试脚本保持一致，640x480）- 保持原有尺寸不变
+        # 创建摄像头显示区域 - 调整为竖屏尺寸(480x640)
         self.camera_display_area = QtWidgets.QWidget()
         camera_display_layout = QtWidgets.QVBoxLayout()
         self.camera_display_area.setLayout(camera_display_layout)
-        self.camera_display_area.setMinimumSize(640, 480)
+        self.camera_display_area.setMinimumSize(480, 640)  # 竖屏尺寸
         camera_layout.addWidget(self.camera_display_area)
         
         camera_group.setLayout(camera_layout)
@@ -763,7 +763,7 @@ class MainWindow(QtWidgets.QMainWindow):
             
             success = self.camera_controller.initialize(
                 camera_index=None,  # 设置为None，让控制器自动选择可用摄像头
-                resolution=(640, 480), 
+                resolution=(480, 640), 
                 fps=15,
                 enable_face_detection=True  # 启用人脸检测
             )

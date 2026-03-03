@@ -44,7 +44,7 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         # 显示图像
         self.image_label = QtWidgets.QLabel()
         self.image_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.image_label.setMinimumSize(640, 480)
+        self.image_label.setMinimumSize(480, 640)  # 调整为竖屏尺寸
         
         # 主布局（只包含图像显示）
         main_layout = QtWidgets.QVBoxLayout()
@@ -78,6 +78,15 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
     def update_image(self, qimage):
         """更新显示的图像（包含统计信息绘制）"""
         try:
+            # 检查图像是否有效（防止QPaintDevice错误）
+            if qimage.isNull():
+                print("警告: 收到无效的QImage，跳过更新")
+                return
+            
+            # 检查标签是否有效（防止段错误）
+            if not self.image_label or not self.image_label.isVisible():
+                return
+            
             # 先应用旋转变换（如果不为0）
             if self.display_rotation != 0:
                 # 创建变换矩阵并应用旋转
@@ -89,71 +98,79 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
             
             # 在旋转后的图像上绘制统计信息（确保文字方向与系统一致）
             image_with_stats = rotated_image.copy()
-            painter = QtGui.QPainter(image_with_stats)
-            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             
-            # 获取统计信息
-            stats = self.get_detection_stats()
-            
-            # 设置字体和颜色
-            font = QtGui.QFont("Arial", 10)
-            painter.setFont(font)
-            painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0)))  # 红色文字
-            
-            # 根据旋转角度动态调整文字位置
-            width = image_with_stats.width()
-            height = image_with_stats.height()
-            
-            if self.display_rotation == -90:  # 逆时针旋转90度
-                # 旋转后，文字应该显示在右侧（旋转后原本的右侧变成了上方）
-                text_x = width - 150  # 右侧留出150像素空间
-                line_height = 20
+            # 使用安全的绘制上下文管理器
+            try:
+                painter = QtGui.QPainter(image_with_stats)
+                painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
                 
-                # 总是显示基本统计信息
-                painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
-                painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
-                painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
+                # 获取统计信息
+                stats = self.get_detection_stats()
                 
-                # 只在有人脸时显示人脸相关统计
-                if stats.get('current_face_count', 0) > 0:
-                    # 计算Gaze Ratio
-                    gazing_faces = stats.get('current_gazing_faces', 0)
-                    face_count = stats.get('current_face_count', 1)
-                    gaze_ratio = (gazing_faces / face_count) * 100 if face_count > 0 else 0
+                # 设置字体和颜色
+                font = QtGui.QFont("Arial", 10)
+                painter.setFont(font)
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 0, 0)))  # 红色文字
+                
+                # 根据旋转角度动态调整文字位置
+                width = image_with_stats.width()
+                height = image_with_stats.height()
+                
+                if self.display_rotation == 90:  # 顺时针旋转90度
+                    # 旋转后，文字应该显示在右侧（旋转后原本的右侧变成了上方）
+                    text_x = width - 150  # 右侧留出150像素空间
+                    line_height = 20
                     
-                    painter.drawText(text_x, 80, f"Face: {stats.get('current_face_count', 0)}")
-                    painter.drawText(text_x, 100, f"Gazing: {gazing_faces}")
-                    painter.drawText(text_x, 120, f"Gaze Ratio: {gaze_ratio:.1f}%")
-                else:
-                    painter.drawText(text_x, 80, "Face: 0")
-                    painter.drawText(text_x, 100, "Gazing: 0")
-                    painter.drawText(text_x, 120, "Gaze Ratio: 0.0%")
-            else:
-                # 默认位置（上方左侧）
-                text_x = 10
-                line_height = 20
-                
-                # 总是显示基本统计信息
-                painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
-                painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
-                painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
-                
-                # 只在有人脸时显示人脸相关统计
-                if stats.get('current_face_count', 0) > 0:
-                    # 计算Gaze Ratio
-                    gazing_faces = stats.get('current_gazing_faces', 0)
-                    face_count = stats.get('current_face_count', 1)
-                    gaze_ratio = (gazing_faces / face_count) * 100 if face_count > 0 else 0
+                    # 总是显示基本统计信息
+                    painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
+                    painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
+                    painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
                     
-                    painter.drawText(text_x, 80, f"Face: {stats.get('current_face_count', 0)}")
-                    painter.drawText(text_x, 100, f"Gazing: {gazing_faces}")
-                    painter.drawText(text_x, 120, f"Gaze Ratio: {gaze_ratio:.1f}%")
+                    # 只在有人脸时显示人脸相关统计
+                    if stats.get('current_face_count', 0) > 0:
+                        # 计算Gaze Ratio
+                        gazing_faces = stats.get('current_gazing_faces', 0)
+                        face_count = stats.get('current_face_count', 1)
+                        gaze_ratio = (gazing_faces / face_count) * 100 if face_count > 0 else 0
+                        
+                        painter.drawText(text_x, 80, f"Face: {stats.get('current_face_count', 0)}")
+                        painter.drawText(text_x, 100, f"Gazing: {gazing_faces}")
+                        painter.drawText(text_x, 120, f"Gaze Ratio: {gaze_ratio:.1f}%")
+                    else:
+                        painter.drawText(text_x, 80, "Face: 0")
+                        painter.drawText(text_x, 100, "Gazing: 0")
+                        painter.drawText(text_x, 120, "Gaze Ratio: 0.0%")
                 else:
-                    painter.drawText(text_x, 80, "Face: 0")
-                    painter.drawText(text_x, 100, "Gazing: 0")
-                    painter.drawText(text_x, 120, "Gaze Ratio: 0.0%")
-            
-            painter.end()
+                    # 默认位置（上方左侧）
+                    text_x = 10
+                    line_height = 20
+                    
+                    # 总是显示基本统计信息
+                    painter.drawText(text_x, 20, f"FPS: {stats.get('avg_fps', 0):.1f}")
+                    painter.drawText(text_x, 40, f"DetectTime: {stats.get('avg_inference_time', 0):.1f}ms")
+                    painter.drawText(text_x, 60, f"Total Frames: {stats.get('total_frames', 0)}")
+                    
+                    # 只在有人脸时显示人脸相关统计
+                    if stats.get('current_face_count', 0) > 0:
+                        # 计算Gaze Ratio
+                        gazing_faces = stats.get('current_gazing_faces', 0)
+                        face_count = stats.get('current_face_count', 1)
+                        gaze_ratio = (gazing_faces / face_count) * 100 if face_count > 0 else 0
+                        
+                        painter.drawText(text_x, 80, f"Face: {stats.get('current_face_count', 0)}")
+                        painter.drawText(text_x, 100, f"Gazing: {gazing_faces}")
+                        painter.drawText(text_x, 120, f"Gaze Ratio: {gaze_ratio:.1f}%")
+                    else:
+                        painter.drawText(text_x, 80, "Face: 0")
+                        painter.drawText(text_x, 100, "Gazing: 0")
+                        painter.drawText(text_x, 120, "Gaze Ratio: 0.0%")
+                
+                # 确保正确结束绘制
+                painter.end()
+            except Exception as paint_error:
+                print(f"绘制统计信息时出错: {paint_error}")
+                # 如果绘制失败，使用原始图像
+                image_with_stats = rotated_image
             
             # 缩放图像以适应显示区域
             scaled_image = image_with_stats.scaled(
@@ -161,7 +178,10 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
                 QtCore.Qt.KeepAspectRatio, 
                 QtCore.Qt.SmoothTransformation
             )
-            self.image_label.setPixmap(QtGui.QPixmap.fromImage(scaled_image))
+            
+            # 线程安全：检查标签是否仍然有效
+            if self.image_label and self.image_label.isVisible():
+                self.image_label.setPixmap(QtGui.QPixmap.fromImage(scaled_image))
         except Exception as e:
             print(f"更新图像时出错: {e}")
     
@@ -178,7 +198,7 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
     """嵌入式MediaPipe摄像头采集线程"""
     frame_processed = Signal(np.ndarray)  # 处理后的帧信号
     
-    def __init__(self, camera_index: int = 2, resolution: tuple = (640, 480), fps: int = 30, detector: EmbeddedMediaPipeDetector = None):
+    def __init__(self, camera_index: int = 2, resolution: tuple = (480, 640), fps: int = 30, detector: EmbeddedMediaPipeDetector = None):
         super().__init__(camera_index, resolution, fps)
         
         # 强制打印调试信息，确认参数接收
@@ -246,8 +266,9 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                         print(f"帧{self.frame_counter} - 读取原始帧: shape={frame.shape}")
                     
                     # 统一处理翻转和镜像操作（所有路径都执行）
-                    frame_flipped = cv2.flip(frame, 0)  # 垂直翻转
-                    frame_mirrored = cv2.flip(frame_flipped, 1)  # 水平镜像
+                    # 注意：基础控制器已经进行了正确的翻转处理，这里不需要额外镜像
+                    # frame_mirrored = cv2.flip(frame, 1)  # 注释掉水平镜像
+                    frame_mirrored = frame  # 直接使用原始帧
                     
                     if self.analysis_enabled:
                         if self.enable_controller_debug:
@@ -256,6 +277,10 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                         try:
                             results, display_frame = self.detector.process_frame(frame_mirrored, self.frame_counter)
                             # 注意：process_frame已经包含了绘制，无需再次调用draw_results
+                            
+                            # 关键修复：将竖屏图像顺时针旋转90度以正确显示
+                            # 摄像头读取的是480×640竖屏，需要旋转为横屏显示
+                            display_frame = cv2.rotate(display_frame, cv2.ROTATE_90_CLOCKWISE)
                             
                             # 转换为RGB格式用于显示
                             frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
@@ -309,7 +334,7 @@ class EmbeddedMediaPipeCameraController(CameraController):
         print(f"控制器检测器实例ID: {id(self.detector)}")
         print(f"控制器检测器引用计数: {sys.getrefcount(self.detector) if 'sys' in locals() else 'N/A'}")
     
-    def start_camera(self, camera_index: int = None, resolution: tuple = (640, 480), fps: int = 30) -> bool:
+    def start_camera(self, camera_index: int = None, resolution: tuple = (480, 640), fps: int = 30) -> bool:
         """启动摄像头 - 使用嵌入式摄像头线程"""
         try:
             # 停止当前摄像头（如果正在运行）
@@ -335,9 +360,9 @@ class EmbeddedMediaPipeCameraController(CameraController):
             self.camera_thread.frame_processed.connect(self._on_frame_received)
             self.camera_thread.start()
             
-            # 设置显示旋转（如果需要）- 逆时针旋转90度
+            # 设置显示旋转 - UI已设置为竖屏，不需要额外旋转
             if hasattr(self.camera_widget, 'set_display_rotation'):
-                self.camera_widget.set_display_rotation(-90)  # 逆时针旋转90度
+                self.camera_widget.set_display_rotation(0)  # 不旋转，UI已设置为竖屏
             
             # 启动分析功能 - 现在启用检测器进行测试
             self.analysis_enabled = True
@@ -350,7 +375,7 @@ class EmbeddedMediaPipeCameraController(CameraController):
             print(f"启动摄像头失败: {e}")
             return False
     
-    def initialize(self, camera_index: int = None, resolution: tuple = (640, 480), 
+    def initialize(self, camera_index: int = None, resolution: tuple = (480, 640), 
                    fps: int = 15, enable_face_detection: bool = False):
         """初始化控制器 - 完全自定义初始化，不使用父类控件"""
         try:

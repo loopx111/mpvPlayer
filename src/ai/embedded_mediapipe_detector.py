@@ -26,8 +26,8 @@ class EmbeddedMediaPipeDetector:
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=3,  # 减少最大人脸数量
             refine_landmarks=False,  # 关闭精细关键点（提高性能）
-            min_detection_confidence=0.7,  # 提高检测阈值避免错误识别人脸
-            min_tracking_confidence=0.3   # 降低跟踪阈值
+            min_detection_confidence=0.3,  # 降低检测阈值，提高小尺寸人脸检测能力
+            min_tracking_confidence=0.3   # 保持跟踪阈值
         )
         
         # 性能优化标志
@@ -189,17 +189,22 @@ class EmbeddedMediaPipeDetector:
         }
     
     def _calculate_number_position_and_angle(self, face_landmarks, w, h, x_min, y_min, x_max, y_max):
-        """计算关注标记的位置和角度，数字保持水平不倾斜"""
-        # 计算人脸边界框的中心点和头顶位置
+        """计算关注标记的位置和角度，考虑UI旋转90度的影响"""
+        # 计算人脸边界框的中心点
         face_center_x = (x_min + x_max) // 2
+        face_center_y = (y_min + y_max) // 2
         
-        # 数字位置：放在人脸中心正上方，在头顶位置
-        # 考虑到旋转-90度的影响，需要调整x坐标位置
-        text_x_pos = face_center_x + 100  # 向右偏移100像素
-        text_y_pos = y_min - 30  # 在边界框上方30像素
+        # 正确逻辑：原始图像中人脸是横着的，UI会顺时针旋转90度变成竖屏
+        # 旋转后，原始图像中的左侧（额头）会变成上方
         
-        # 数字角度：保持水平基础上做顺时针90度旋转
-        text_angle = -90
+        # 位置：在原始横屏图像中，额头在左侧，所以数字应该放在左侧
+        text_x_pos = x_min - 30  # 在人脸左侧30像素（额头位置）
+        text_y_pos = face_center_y  # 人脸垂直中心
+        
+        # 角度：数字应该水平显示，头朝左（额头方向）
+        # 原始图像中人脸横着，额头在左侧，数字应该水平显示，头朝左
+        # UI旋转90度后，数字会跟着旋转到额头上方，变成竖直显示
+        text_angle = 90  # 水平显示，头朝左
         
         # 确保位置在图像范围内
         text_x_pos = max(5, min(w - 30, text_x_pos))
@@ -384,24 +389,30 @@ class EmbeddedMediaPipeDetector:
         
         # 关键修复：确保无论是否使用缓存，gazing_faces都正确计算
         if results.multi_face_landmarks:
-            for i, face_landmarks in enumerate(results.multi_face_landmarks):
-                # 计算头部姿态
-                yaw, pitch, roll = self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)
-                
-                # 角度平滑处理（直接从原始脚本复制）
-                alpha = 0.7
-                yaw = alpha * yaw + (1 - alpha) * self.last_yaw
-                pitch = alpha * pitch + (1 - alpha) * self.last_pitch
-                roll = alpha * roll + (1 - alpha) * self.last_roll
-                
-                # 更新缓存角度
-                self.last_yaw, self.last_pitch, self.last_roll = yaw, pitch, roll
-                
-                is_gazing = self.check_gaze(yaw, pitch, roll)
-                gazing_states.append(is_gazing)  # 存储注视状态
-                
-                if is_gazing:
-                    gazing_faces += 1
+            # 如果是缓存结果，使用缓存的注视状态
+            if is_cached_result and hasattr(self.frame_optimizer, 'cached_is_gazing'):
+                gazing_states = self.frame_optimizer.cached_is_gazing
+                gazing_faces = sum(gazing_states) if gazing_states else 0
+            else:
+                # 正常计算注视状态
+                for i, face_landmarks in enumerate(results.multi_face_landmarks):
+                    # 计算头部姿态
+                    yaw, pitch, roll = self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)
+                    
+                    # 角度平滑处理（直接从原始脚本复制）
+                    alpha = 0.7
+                    yaw = alpha * yaw + (1 - alpha) * self.last_yaw
+                    pitch = alpha * pitch + (1 - alpha) * self.last_pitch
+                    roll = alpha * roll + (1 - alpha) * self.last_roll
+                    
+                    # 更新缓存角度
+                    self.last_yaw, self.last_pitch, self.last_roll = yaw, pitch, roll
+                    
+                    is_gazing = self.check_gaze(yaw, pitch, roll)
+                    gazing_states.append(is_gazing)  # 存储注视状态
+                    
+                    if is_gazing:
+                        gazing_faces += 1
         else:
             # 无人脸时，确保gazing_faces为0
             gazing_faces = 0
@@ -463,7 +474,10 @@ class EmbeddedMediaPipeDetector:
     def get_detection_stats(self):
         """获取详细的检测统计信息"""
         current_time = time.time() - self.start_time
-        avg_inference = statistics.mean(self.inference_times) if self.inference_times else 0
+        
+        # 线程安全：创建副本以避免deque在迭代时被修改
+        inference_times_copy = list(self.inference_times)
+        avg_inference = statistics.mean(inference_times_copy) if inference_times_copy else 0
         
         return {
             'total_frames': self.frame_count,

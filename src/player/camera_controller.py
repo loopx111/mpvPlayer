@@ -13,7 +13,7 @@ class CameraThread(QThread):
     """摄像头采集线程"""
     frame_ready = Signal(np.ndarray)
     
-    def __init__(self, camera_index: int = 0, resolution: tuple = (640, 480), fps: int = 30):
+    def __init__(self, camera_index: int = 0, resolution: tuple = (480, 640), fps: int = 30):
         super().__init__()
         self.camera_index = camera_index
         self.resolution = resolution
@@ -44,8 +44,9 @@ class CameraThread(QThread):
                 
                 ret, frame = self.cap.read()
                 if ret:
-                    # 修正摄像头倒置问题 - 垂直翻转
-                    frame = cv2.flip(frame, 0)
+                    # 注意：根据测试，摄像头不需要垂直翻转，直接使用原始帧
+                    # 翻转操作在嵌入式控制器中统一处理
+                    # frame = cv2.flip(frame, 0)  # 注释掉垂直翻转
                     
                     # 转换为RGB格式用于显示
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -282,13 +283,13 @@ class CameraController:
         self.camera_widget = None
         self.is_connected = False
         self.camera_index = 0
-        self.resolution = (640, 480)
+        self.resolution = (480, 640)
         self.fps = 30
         self.on_frame_callback = None
         self.available_cameras = []
         self.rotation_angle = 0  # 旋转角度：0, 90, 180, 270
     
-    def initialize(self, camera_index: int = None, resolution: tuple = (640, 480), fps: int = 30):
+    def initialize(self, camera_index: int = None, resolution: tuple = (480, 640), fps: int = 30):
         """初始化摄像头控制器"""
         self.resolution = resolution
         self.fps = fps
