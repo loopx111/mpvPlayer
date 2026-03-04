@@ -72,8 +72,8 @@ class CameraThread(QThread):
     def _open_camera_with_retry(self) -> bool:
         """智能摄像头打开策略，支持重试"""
         backends = [
-            cv2.CAP_ANY,    # 优先使用自动选择
-            cv2.CAP_V4L2,   # 次选V4L2
+            cv2.CAP_V4L2,   # 优先使用V4L2（针对Linux设备）
+            cv2.CAP_ANY,    # 次选自动选择
             cv2.CAP_FFMPEG  # 最后尝试FFMPEG
         ]
         

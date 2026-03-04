@@ -201,7 +201,7 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
     """嵌入式MediaPipe摄像头采集线程"""
     frame_processed = Signal(np.ndarray)  # 处理后的帧信号
     
-    def __init__(self, camera_index: int = 2, resolution: tuple = (480, 640), fps: int = 30, detector: EmbeddedMediaPipeDetector = None):
+    def __init__(self, camera_index: int = 0, resolution: tuple = (480, 640), fps: int = 30, detector: EmbeddedMediaPipeDetector = None):
         super().__init__(camera_index, resolution, fps)
         
         # 强制打印调试信息，确认参数接收
@@ -553,9 +553,9 @@ class EmbeddedMediaPipeCameraController(CameraController):
         available_cameras = []
         
         # 智能检测顺序：先检查已知有效索引，避免阻塞
-        preferred_indices = [0, 3]  # 根据日志分析，0和3是有效的，1和2会阻塞
+        preferred_indices = [2, 0]  # 0 为IR红外摄像头，2为RGB彩色摄像头优先使用
         
-        print(f"优化检测顺序: {preferred_indices} (跳过已知阻塞索引1和2)")
+        print(f"优化检测顺序: {preferred_indices} (跳过已知阻塞索引1和3)")
         
         # 检查首选索引（带超时保护）
         print("开始检测首选索引...")
