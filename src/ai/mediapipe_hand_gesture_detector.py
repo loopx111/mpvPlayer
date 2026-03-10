@@ -113,7 +113,7 @@ class MediaPipeHandGestureDetector:
     
     def _recognize_gesture(self, hand_landmarks) -> str:
         """
-        识别单个手势
+        识别单个手势 - 专注于张开手掌和拳头的精准识别
         
         Args:
             hand_landmarks: 手部关键点
@@ -124,58 +124,229 @@ class MediaPipeHandGestureDetector:
         # 获取关键点坐标
         landmarks = hand_landmarks.landmark
         
-        # 1. 检查是否为拳头
-        if self._is_fist(landmarks):
+        # 计算手掌张开度
+        palm_openness = self._calculate_palm_openness(landmarks)
+        
+        # 使用更严格的阈值和条件来区分两个手势
+        fist_score = self._calculate_fist_confidence(landmarks)
+        open_palm_score = self._calculate_open_palm_confidence(landmarks)
+        
+        # 调试信息：打印置信度值
+        print(f"拳头置信度: {fist_score:.3f}, 张开手掌置信度: {open_palm_score:.3f}, 手掌张开度: {palm_openness:.3f}")
+        
+        # 决策逻辑：选择置信度更高的手势
+        if fist_score > 0.7 and fist_score > open_palm_score:
             return "fist"
-        
-        # 2. 检查是否为张开手掌
-        if self._is_open_palm(landmarks):
+        elif open_palm_score > 0.6 and open_palm_score > fist_score:
             return "open_palm"
-        
-        # 3. 检查是否为大拇指向上
-        if self._is_thumb_up(landmarks):
-            return "thumb_up"
-        
-        # 4. 检查是否为剪刀手
-        if self._is_victory(landmarks):
-            return "victory"
-        
-        # 5. 检查是否为OK手势
-        if self._is_ok(landmarks):
-            return "ok"
-        
-        # 6. 检查是否为食指指向
-        if self._is_pointing(landmarks):
-            return "pointing"
-        
-        # 7. 手指计数
-        finger_count = self._count_fingers(landmarks)
-        if finger_count > 0:
-            return f"counting_{finger_count}"
-        
-        return "unknown"
+        elif 0.3 <= palm_openness <= 0.7:
+            # 中间状态，避免误判
+            return "transition"
+        else:
+            return "unknown"
     
-    def _is_fist(self, landmarks) -> bool:
-        """检测拳头手势"""
-        # 检查所有手指是否弯曲
-        finger_tips = [8, 12, 16, 20]  # 食指、中指、无名指、小指尖端
-        finger_mcps = [5, 9, 13, 17]   # 对应的掌指关节
+    def _calculate_palm_openness(self, landmarks) -> float:
+        """计算手掌张开度（0-1）"""
+        # 计算手指尖到手掌中心的平均距离
+        palm_center = self._calculate_palm_center(landmarks)
+        finger_tips = [8, 12, 16, 20]
+        
+        distances = []
+        for tip in finger_tips:
+            distance = self._calculate_distance(landmarks[tip], palm_center)
+            distances.append(distance)
+        
+        # 归一化到0-1范围
+        avg_distance = sum(distances) / len(distances)
+        openness = min(avg_distance / 0.3, 1.0)  # 0.3是最大张开距离的经验值
+        
+        return openness
+    
+    def _calculate_fist_confidence(self, landmarks) -> float:
+        """计算拳头置信度（0-1）"""
+        confidence = 0.0
+        
+        # 检查所有手指的弯曲程度
+        fingers_bent = 0
+        finger_tips = [8, 12, 16, 20]
+        finger_mcps = [5, 9, 13, 17]
         
         for tip, mcp in zip(finger_tips, finger_mcps):
-            if landmarks[tip].y > landmarks[mcp].y:  # 指尖在掌指关节下方
-                return True
-        return False
+            if landmarks[tip].y > landmarks[mcp].y:  # 手指弯曲
+                fingers_bent += 1
+        
+        # 弯曲手指比例
+        bent_ratio = fingers_bent / len(finger_tips)
+        
+        # 检查指尖是否靠近手掌中心
+        palm_center = self._calculate_palm_center(landmarks)
+        avg_tip_distance = 0.0
+        for tip in finger_tips:
+            avg_tip_distance += self._calculate_distance(landmarks[tip], palm_center)
+        avg_tip_distance /= len(finger_tips)
+        
+        # 距离越小，拳头置信度越高
+        distance_score = max(0, 1.0 - avg_tip_distance / 0.15)
+        
+        # 综合置信度
+        confidence = (bent_ratio + distance_score) / 2.0
+        
+        return confidence
+    
+    def _calculate_open_palm_confidence(self, landmarks) -> float:
+        """计算张开手掌置信度（0-1） - 更宽松的检测条件"""
+        confidence = 0.0
+        
+        # 检查所有手指的伸直程度（更宽松的条件）
+        fingers_straight = 0
+        finger_tips = [8, 12, 16, 20]
+        finger_mcps = [5, 9, 13, 17]  # 使用MCP关节作为基准
+        
+        for tip, mcp in zip(finger_tips, finger_mcps):
+            # 放宽条件：指尖在MCP关节上方即可认为伸直
+            if landmarks[tip].y < landmarks[mcp].y:
+                fingers_straight += 1
+        
+        # 伸直手指比例（至少3个手指伸直即可）
+        straight_ratio = max(0, (fingers_straight - 2) / 2.0)  # 3个手指=0.5, 4个手指=1.0
+        
+        # 检查手指间距（张开程度）
+        finger_spacing_score = 0.0
+        if len(finger_tips) > 1:
+            for i in range(len(finger_tips) - 1):
+                distance = self._calculate_distance(landmarks[finger_tips[i]], landmarks[finger_tips[i+1]])
+                finger_spacing_score += min(distance / 0.06, 1.0)  # 降低间距阈值到0.06
+            finger_spacing_score /= (len(finger_tips) - 1)
+        
+        # 检查手掌平坦度（更宽松）
+        palm_flatness = self._check_palm_flatness(landmarks, [0, 5, 9, 13, 17])
+        
+        # 检查手掌张开度（新加的指标）
+        palm_openness = self._calculate_palm_openness(landmarks)
+        
+        # 综合置信度（更侧重手指伸直和手掌张开度）
+        confidence = (straight_ratio * 0.4 + 
+                     finger_spacing_score * 0.2 + 
+                     palm_flatness * 0.2 + 
+                     palm_openness * 0.2)
+        
+        # 如果至少有3个手指伸直，增加基础置信度
+        if fingers_straight >= 3:
+            confidence = max(confidence, 0.7)
+        
+        return min(confidence, 1.0)
+    
+    def _is_fist(self, landmarks) -> bool:
+        """检测拳头手势 - 更精准的算法"""
+        # 更严格的拳头检测：检查所有手指关节的弯曲程度
+        
+        # 定义手指的关键点索引
+        fingers = [
+            [4, 3, 2, 1],    # 大拇指：指尖、IP关节、MCP关节、手腕
+            [8, 7, 6, 5],    # 食指：指尖、DIP、PIP、MCP
+            [12, 11, 10, 9], # 中指：指尖、DIP、PIP、MCP
+            [16, 15, 14, 13], # 无名指：指尖、DIP、PIP、MCP
+            [20, 19, 18, 17]  # 小指：指尖、DIP、PIP、MCP
+        ]
+        
+        # 检查每个手指的弯曲程度
+        for finger in fingers:
+            tip, dip, pip, mcp = finger
+            
+            # 计算指尖到MCP关节的距离（Y轴方向）
+            tip_to_mcp_y = abs(landmarks[tip].y - landmarks[mcp].y)
+            
+            # 计算指尖到手腕的距离（作为参考）
+            tip_to_wrist_y = abs(landmarks[tip].y - landmarks[0].y)
+            
+            # 如果指尖在MCP关节上方（伸直），或者距离手腕太远，说明不是拳头
+            if landmarks[tip].y < landmarks[mcp].y or tip_to_wrist_y > 0.3:
+                return False
+            
+            # 检查手指是否完全弯曲（指尖靠近手掌）
+            tip_to_palm_distance = self._calculate_distance(landmarks[tip], landmarks[0])
+            if tip_to_palm_distance > 0.2:  # 距离阈值，可调整
+                return False
+        
+        # 额外检查：手掌是否闭合
+        palm_center = self._calculate_palm_center(landmarks)
+        for tip in [8, 12, 16, 20]:
+            distance = self._calculate_distance(landmarks[tip], palm_center)
+            if distance > 0.15:  # 指尖距离手掌中心太远
+                return False
+        
+        return True
     
     def _is_open_palm(self, landmarks) -> bool:
-        """检测张开手掌"""
-        # 检查所有手指是否伸直
-        finger_tips = [8, 12, 16, 20]  # 指尖
-        finger_pips = [6, 10, 14, 18]  # 近端指间关节
+        """检测张开手掌 - 更精准的算法"""
+        # 更严格的张开手掌检测：检查所有手指的伸直程度和手指间距
         
-        for tip, pip in zip(finger_tips, finger_pips):
-            if landmarks[tip].y > landmarks[pip].y:  # 指尖在指间关节下方
+        # 检查每个手指是否伸直
+        fingers = [
+            [8, 6, 5],    # 食指：指尖、PIP、MCP
+            [12, 10, 9],  # 中指：指尖、PIP、MCP
+            [16, 14, 13], # 无名指：指尖、PIP、MCP
+            [20, 18, 17]  # 小指：指尖、PIP、MCP
+        ]
+        
+        for finger in fingers:
+            tip, pip, mcp = finger
+            
+            # 检查手指是否伸直（指尖在PIP关节上方）
+            if landmarks[tip].y >= landmarks[pip].y:
                 return False
+            
+            # 检查手指是否过度弯曲
+            tip_to_mcp_distance = self._calculate_distance(landmarks[tip], landmarks[mcp])
+            if tip_to_mcp_distance < 0.1:  # 距离太近，可能弯曲
+                return False
+        
+        # 检查手指间距（张开程度）
+        finger_tips = [8, 12, 16, 20]
+        for i in range(len(finger_tips) - 1):
+            distance = self._calculate_distance(landmarks[finger_tips[i]], landmarks[finger_tips[i+1]])
+            if distance < 0.05:  # 手指间距太小，可能没有张开
+                return False
+        
+        # 检查手掌是否平坦
+        palm_points = [0, 5, 9, 13, 17]  # 手腕和MCP关节
+        palm_flatness = self._check_palm_flatness(landmarks, palm_points)
+        if palm_flatness < 0.8:  # 手掌不够平坦
+            return False
+        
         return True
+    
+    def _calculate_distance(self, point1, point2) -> float:
+        """计算两点之间的欧几里得距离"""
+        return np.sqrt((point1.x - point2.x)**2 + (point1.y - point2.y)**2)
+    
+    def _calculate_palm_center(self, landmarks):
+        """计算手掌中心点"""
+        class Point:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+        
+        # 使用手腕和MCP关节计算中心点
+        palm_points = [0, 5, 9, 13, 17]
+        x_coords = [landmarks[i].x for i in palm_points]
+        y_coords = [landmarks[i].y for i in palm_points]
+        
+        center_x = sum(x_coords) / len(x_coords)
+        center_y = sum(y_coords) / len(y_coords)
+        
+        return Point(center_x, center_y)
+    
+    def _check_palm_flatness(self, landmarks, palm_points) -> float:
+        """检查手掌平坦度"""
+        # 计算手掌点构成的平面的平坦度
+        # 简单实现：检查所有点是否大致在同一平面上
+        
+        y_coords = [landmarks[i].y for i in palm_points]
+        y_range = max(y_coords) - min(y_coords)
+        
+        # 平坦度：Y坐标范围越小，手掌越平坦
+        return 1.0 - min(y_range, 0.2) / 0.2  # 归一化到0-1
     
     def _is_thumb_up(self, landmarks) -> bool:
         """检测大拇指向上"""

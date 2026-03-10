@@ -56,8 +56,11 @@ class GestureController:
         self.last_process_time = 0
         self.skip_frames = 0  # 跳帧计数器
         self.skip_frame_interval = 2  # 每2帧处理1帧
-        
-        print("手势控制器初始化完成（性能优化版）")
+
+        # 手势状态跟踪
+        self.last_stable_gesture = None  # 上一个稳定的手势
+
+        print("手势控制器初始化完成（性能优化版 + 稳定检测）")
     
     def _find_available_camera(self, preferred_index: int = 2) -> int:
         """
@@ -179,7 +182,7 @@ class GestureController:
     
     def process_frame(self, frame: np.ndarray) -> Optional[Dict]:
         """
-        处理摄像头帧数据 - 性能优化版本
+        处理摄像头帧数据 - 简化的实时版本
         
         Args:
             frame: 输入图像帧 (BGR格式，480x640竖屏)
@@ -191,18 +194,17 @@ class GestureController:
             return None
             
         try:
-            # 性能优化：帧率控制和跳帧机制
+            # 恢复跳帧机制：每2帧处理1帧
+            self.skip_frames += 1
+            if self.skip_frames % self.skip_frame_interval != 0:
+                return None
+            
+            # 性能优化：帧率控制
             current_time = time.time()
             time_interval = current_time - self.last_process_time
             
             # 如果时间间隔太短，跳过处理以控制帧率
             if time_interval < 1.0 / self.max_fps:
-                self.skip_frames += 1
-                return None
-            
-            # 跳帧机制：每隔几帧处理一次
-            self.skip_frames += 1
-            if self.skip_frames % self.skip_frame_interval != 0:
                 return None
             
             self.last_process_time = current_time
@@ -210,20 +212,31 @@ class GestureController:
             # 检测手势
             detection_results = self.detector.detect_hands(frame)
             
+            # 获取当前检测到的手势
+            gestures = detection_results.get('gestures', [])
+            current_gesture = gestures[0] if gestures else "unknown"
+            
             # 性能优化：只在检测到手部时才绘制
             if detection_results['hands_count'] > 0:
                 # 在原始图像上绘制手势信息
                 display_frame = frame.copy()
                 display_frame = self.detector.draw_hand_landmarks(display_frame, detection_results)
                 
-                # 处理识别到的手势
-                gestures = detection_results.get('gestures', [])
-                if gestures:
-                    self._process_gestures(gestures)
+                # 处理当前检测到的手势（实时处理，不使用缓冲区）
+                if current_gesture != "unknown":
+                    # 打印手势信息（无论是否变化，但限制频率）
+                    print(f"手势：{self._get_gesture_display_name(current_gesture)}")
+                    
+                    # 处理手势动作（应用冷却时间机制）
+                    self._process_gestures([current_gesture])
+                    
+                    # 更新最后稳定手势
+                    self.last_stable_gesture = current_gesture
                 
                 # 返回结果 - 注意：返回未旋转的帧，旋转由控制器统一处理
                 result = {
                     'gestures': gestures,
+                    'current_gesture': current_gesture,  # 改为当前手势而非稳定手势
                     'hands_count': detection_results.get('hands_count', 0),
                     'display_frame': display_frame,  # 未旋转的帧
                     'original_frame': frame,
@@ -232,8 +245,12 @@ class GestureController:
                 }
             else:
                 # 没有检测到手部，直接返回原始帧
+                # 重置手势状态
+                self.last_stable_gesture = "unknown"
+                
                 result = {
                     'gestures': [],
+                    'current_gesture': "unknown",
                     'hands_count': 0,
                     'display_frame': frame,  # 未旋转的帧
                     'original_frame': frame,
@@ -245,6 +262,23 @@ class GestureController:
             
         except Exception as e:
             return None
+    
+    def _get_gesture_display_name(self, gesture: str) -> str:
+        """获取手势的显示名称"""
+        gesture_names = {
+            "fist": "拳头",
+            "open_palm": "张开手掌",
+            "thumb_up": "大拇指向上", 
+            "victory": "剪刀手(V)",
+            "ok": "OK手势",
+            "pointing": "食指指向",
+            "counting_1": "手指计数1",
+            "counting_2": "手指计数2", 
+            "counting_3": "手指计数3",
+            "counting_4": "手指计数4",
+            "counting_5": "手指计数5"
+        }
+        return gesture_names.get(gesture, gesture)
     
     def _process_gestures(self, gestures: list) -> None:
         """

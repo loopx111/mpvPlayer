@@ -304,11 +304,11 @@ class MainWindow(QtWidgets.QMainWindow):
         pass
     
     def _update_ad_attention_stats(self) -> None:
-        """更新广告关注度统计 - 只在face模式下运行"""
+        """更新广告关注度统计 - face模式显示人脸关注度，gesture模式显示手势识别结果"""
         try:
             # 只在face模式下运行广告关注度统计
             if self.detection_mode != "face":
-                # 在gesture模式下，显示提示信息并完全禁用统计功能
+                # 在gesture模式下，显示手势识别结果
                 if self.detection_mode == "gesture":
                     self.current_ad_label.setText("手势识别模式")
                     self.current_ad_score.setText("功能已禁用")
@@ -318,7 +318,11 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.consistency_label.setText("功能已禁用")
                     self.coverage_label.setText("功能已禁用")
                     self.current_face_count_label.setText("功能已禁用")
-                    self.current_gazing_count_label.setText("功能已禁用")
+                    
+                    # 获取手势识别结果
+                    gesture_result = self._get_gesture_recognition_result()
+                    self.current_gazing_count_label.setText(gesture_result)
+                    
                     # 清空广告排名
                     self.ad_ranking_widget.clear()
                 return
@@ -740,6 +744,36 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as e:
             print(f"获取当前广告ID时出错: {e}")
             return "未知广告"
+    
+    def _get_gesture_recognition_result(self) -> str:
+        """获取手势识别结果"""
+        try:
+            # 检查摄像头控制器是否存在且有手势检测器
+            if not hasattr(self.camera_controller, 'gesture_controller'):
+                return "未初始化"
+            
+            gesture_controller = self.camera_controller.gesture_controller
+            if not gesture_controller or not gesture_controller.running:
+                return "未运行"
+            
+            # 直接通过手势控制器获取当前手势
+            if hasattr(gesture_controller, 'last_stable_gesture'):
+                current_gesture = gesture_controller.last_stable_gesture
+                if current_gesture and current_gesture != "unknown":
+                    # 获取手势的显示名称
+                    if hasattr(gesture_controller, '_get_gesture_display_name'):
+                        gesture_name = gesture_controller._get_gesture_display_name(current_gesture)
+                        return f"手势: {gesture_name}"
+                    else:
+                        return f"手势: {current_gesture}"
+                else:
+                    return "未检测到手势"
+            else:
+                return "检测中..."
+                
+        except Exception as e:
+            print(f"获取手势识别结果时出错: {e}")
+            return "错误"
     
     def get_current_file_info(self):
         """获取当前播放文件信息（优化版本）"""

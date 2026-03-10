@@ -269,6 +269,19 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                             gesture_results = self.gesture_controller.process_frame(frame_mirrored)
                             if gesture_results:
                                 display_frame = gesture_results.get('display_frame', frame_mirrored)
+                                
+                                # 显示手势检测统计信息
+                                stable_gesture = gesture_results.get('stable_gesture')
+                                hands_count = gesture_results.get('hands_count', 0)
+                                fps = gesture_results.get('fps', 0)
+                                
+                                # 只在检测到手部时显示手势信息
+                                if hands_count > 0:
+                                    # 显示基本统计信息
+                                    print(f"手部数量: {hands_count}, FPS: {fps:.1f}")
+                                    
+                                # 稳定手势会在gesture_controller内部打印
+                                    
                             else:
                                 display_frame = frame_mirrored
                         except Exception as e:
