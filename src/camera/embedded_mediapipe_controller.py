@@ -16,6 +16,7 @@ import sys
 
 from src.player.camera_controller import CameraController, CameraWidget, CameraThread
 from src.ai.embedded_mediapipe_detector import EmbeddedMediaPipeDetector
+from src.ai.gesture_controller import GestureController
 
 
 class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
@@ -24,19 +25,11 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
     def __init__(self, detector: EmbeddedMediaPipeDetector = None):
         super().__init__()
         
-        # 强制打印调试信息，确认参数接收
-        print("=== 控件构造函数开始 ===")
-        print(f"控件接收到的检测器参数: {detector}")
-        print(f"控件接收到的检测器参数类型: {type(detector)}")
-        print(f"控件接收到的检测器参数ID: {id(detector) if detector else 'None'}")
-        
         # 使用传入的检测器实例，如果没有传入则创建新的
         if detector is None:
             self.detector = EmbeddedMediaPipeDetector()
-            print("控件创建新的检测器实例")
         else:
             self.detector = detector
-            print(f"控件使用共享检测器实例，ID: {id(detector)}")
         
         # 显示配置 - 可配置的旋转角度
         self.display_rotation: int = 0  # 默认不旋转，0度
@@ -51,9 +44,6 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         main_layout.addWidget(self.image_label)
         
         self.setLayout(main_layout)
-        
-        print("嵌入式MediaPipe摄像头控件初始化完成")
-        print(f"默认显示旋转角度: {self.display_rotation}度")
     
     def process_frame(self, frame):
         """处理摄像头帧 - 现在只负责显示，不进行检测"""
@@ -201,29 +191,24 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
     """嵌入式MediaPipe摄像头采集线程"""
     frame_processed = Signal(np.ndarray)  # 处理后的帧信号
     
-    def __init__(self, camera_index: int = 0, resolution: tuple = (480, 640), fps: int = 30, detector: EmbeddedMediaPipeDetector = None):
+    def __init__(self, camera_index: int = 0, resolution: tuple = (480, 640), fps: int = 30, detector: EmbeddedMediaPipeDetector = None, analysis_enabled: bool = False, gesture_controller = None):
         super().__init__(camera_index, resolution, fps)
-        
-        # 强制打印调试信息，确认参数接收
-        print("=== 线程构造函数开始 ===")
-        print(f"线程接收到的检测器参数: {detector}")
-        print(f"线程接收到的检测器参数类型: {type(detector)}")
-        print(f"线程接收到的检测器参数ID: {id(detector) if detector else 'None'}")
         
         # 使用传入的检测器实例，如果没有传入则创建新的
         if detector is None:
             self.detector = EmbeddedMediaPipeDetector()
-            print("摄像头线程创建新的检测器实例")
         else:
             self.detector = detector
-            print(f"摄像头线程使用共享检测器实例，ID: {id(detector)}")
-        # 现在启用分析功能进行测试
-        self.analysis_enabled = True
+        
+        # 手势控制器
+        self.gesture_controller = gesture_controller
+        
+        # 根据参数设置分析功能状态
+        self.analysis_enabled = analysis_enabled
         # 帧号计数器
         self.frame_counter = 0
         # 性能优化标志
         self.enable_controller_debug = False  # 关闭控制器调试日志
-        print(f"摄像头线程初始化，分析功能状态: {self.analysis_enabled}")
     
     def run(self):
         """线程运行函数 - 集成检测处理"""
@@ -235,14 +220,11 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                 try:
                     self.cap = cv2.VideoCapture(self.camera_index, backend)
                     if self.cap.isOpened():
-                        print(f"使用后端 {backend} 成功打开摄像头 {self.camera_index}")
                         break
                 except Exception as e:
-                    print(f"后端 {backend} 打开摄像头失败: {e}")
                     continue
             
             if not self.cap or not self.cap.isOpened():
-                print(f"无法打开摄像头 {self.camera_index}")
                 return
             
             # 设置分辨率（尝试设置，但可能失败）
@@ -251,8 +233,8 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                 self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
                 self.cap.set(cv2.CAP_PROP_FPS, self.fps)
             except Exception as e:
-                print(f"设置摄像头参数失败: {e}")
                 # 继续使用默认参数
+                pass
             
             self.running = True
             
@@ -265,45 +247,43 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                 ret, frame = self.cap.read()
                 if ret:
                     self.frame_counter += 1
-                    if self.enable_controller_debug:
-                        print(f"帧{self.frame_counter} - 读取原始帧: shape={frame.shape}")
                     
                     # 统一处理翻转和镜像操作（所有路径都执行）
                     # 注意：基础控制器已经进行了正确的翻转处理，这里不需要额外镜像
-                    # frame_mirrored = cv2.flip(frame, 1)  # 注释掉水平镜像
                     frame_mirrored = frame  # 直接使用原始帧
                     
+                    # 处理帧的显示
+                    display_frame = None
+                    
                     if self.analysis_enabled:
-                        if self.enable_controller_debug:
-                            print(f"帧{self.frame_counter} - 检测路径: analysis_enabled={self.analysis_enabled}, 调用检测器")
-                        # 使用嵌入式检测器处理帧
+                        # 人脸检测模式：使用嵌入式检测器处理帧
                         try:
                             results, display_frame = self.detector.process_frame(frame_mirrored, self.frame_counter)
                             # 注意：process_frame已经包含了绘制，无需再次调用draw_results
                             
-                            # 关键修复：将竖屏图像顺时针旋转90度以正确显示
-                            # 摄像头读取的是480×640竖屏，需要旋转为横屏显示
-                            display_frame = cv2.rotate(display_frame, cv2.ROTATE_90_CLOCKWISE)
-                            
-                            # 转换为RGB格式用于显示
-                            frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-                            self.frame_processed.emit(frame_rgb)
-                            
                         except Exception as e:
-                            if self.enable_controller_debug:
-                                print(f"帧{self.frame_counter} - 检测处理失败: {e}")
-                            # 检测失败时直接使用翻转镜像后的帧
-                            frame_rgb = cv2.cvtColor(frame_mirrored, cv2.COLOR_BGR2RGB)
-                            self.frame_processed.emit(frame_rgb)
+                            display_frame = frame_mirrored  # 检测失败时使用原始帧
+                    elif self.gesture_controller:
+                        # 手势检测模式：使用手势控制器处理帧
+                        try:
+                            gesture_results = self.gesture_controller.process_frame(frame_mirrored)
+                            if gesture_results:
+                                display_frame = gesture_results.get('display_frame', frame_mirrored)
+                            else:
+                                display_frame = frame_mirrored
+                        except Exception as e:
+                            display_frame = frame_mirrored  # 检测失败时使用原始帧
                     else:
-                        if self.enable_controller_debug:
-                            print(f"帧{self.frame_counter} - 未检测路径: analysis_enabled={self.analysis_enabled}, 仅进行基础翻转")
                         # 未启用检测时直接使用翻转镜像后的帧
-                        frame_rgb = cv2.cvtColor(frame_mirrored, cv2.COLOR_BGR2RGB)
-                        self.frame_processed.emit(frame_rgb)
-                else:
-                    if self.enable_controller_debug:
-                        print(f"帧{self.frame_counter} - 读取帧失败，ret=", ret)
+                        display_frame = frame_mirrored
+                    
+                    # 关键：将竖屏图像顺时针旋转90度以正确显示
+                    # 摄像头读取的是480×640竖屏，需要旋转为横屏显示
+                    display_frame = cv2.rotate(display_frame, cv2.ROTATE_90_CLOCKWISE)
+                    
+                    # 转换为RGB格式用于显示
+                    frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+                    self.frame_processed.emit(frame_rgb)
                 
                 # 控制帧率
                 elapsed = (time.time() - start_time) * 1000
@@ -311,7 +291,7 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                     self.msleep(int(frame_interval - elapsed))
                     
         except Exception as e:
-            print(f"摄像头线程错误: {e}")
+            pass
         finally:
             if self.cap:
                 self.cap.release()
@@ -320,22 +300,28 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
 class EmbeddedMediaPipeCameraController(CameraController):
     """嵌入式MediaPipe摄像头控制器"""
     
-    def __init__(self):
+    def __init__(self, detection_mode: str = "face"):
         super().__init__()
         
+        # 检测模式
+        self.detection_mode = detection_mode
+        
         # 嵌入式检测器 - 创建共享实例
-        print("控制器开始创建检测器实例...")
         self.detector = EmbeddedMediaPipeDetector()
         
-        # 检测状态
-        self.analysis_enabled = False
+        # 手势控制器 - 在gesture模式下使用
+        if detection_mode == "gesture":
+            from src.ai.gesture_controller import GestureController
+            self.gesture_controller = GestureController()
+            self.gesture_controller.start()
+        else:
+            self.gesture_controller = None
+        
+        # 检测状态 - 根据检测模式决定
+        self.analysis_enabled = detection_mode == "face"
         
         # 回调函数
         self.on_analysis_result = None
-        
-        print("嵌入式MediaPipe摄像头控制器初始化完成 - 创建检测器实例")
-        print(f"控制器检测器实例ID: {id(self.detector)}")
-        print(f"控制器检测器引用计数: {sys.getrefcount(self.detector) if 'sys' in locals() else 'N/A'}")
     
     def start_camera(self, camera_index: int = None, resolution: tuple = (480, 640), fps: int = 30) -> bool:
         """启动摄像头 - 使用嵌入式摄像头线程"""
@@ -345,7 +331,7 @@ class EmbeddedMediaPipeCameraController(CameraController):
                 self.camera_thread.stop()
                 self.camera_thread.wait(3000)
             
-            # 创建新的嵌入式摄像头线程，并传入共享的检测器实例
+            # 创建新的嵌入式摄像头线程，并传入共享的检测器实例和分析状态
             print(f"传递给线程的检测器实例ID: {id(self.detector)}")
             print(f"传递给线程的检测器参数: {self.detector}")
             print(f"传递给线程的检测器参数类型: {type(self.detector)}")
@@ -354,11 +340,15 @@ class EmbeddedMediaPipeCameraController(CameraController):
             target_camera_index = camera_index if camera_index is not None else self.camera_index
             
             print(f"使用摄像头索引: {target_camera_index}")
+            print(f"传递给线程的分析功能状态: {self.analysis_enabled}")
+            print(f"检测模式: {self.detection_mode}")
             self.camera_thread = EmbeddedMediaPipeCameraThread(
                 camera_index=target_camera_index, 
                 resolution=resolution, 
                 fps=fps, 
-                detector=self.detector
+                detector=self.detector,
+                analysis_enabled=self.analysis_enabled,
+                gesture_controller=self.gesture_controller if self.detection_mode == "gesture" else None
             )
             self.camera_thread.frame_processed.connect(self._on_frame_received)
             self.camera_thread.start()
@@ -367,9 +357,7 @@ class EmbeddedMediaPipeCameraController(CameraController):
             if hasattr(self.camera_widget, 'set_display_rotation'):
                 self.camera_widget.set_display_rotation(0)  # 不旋转，UI已设置为竖屏
             
-            # 启动分析功能 - 现在启用检测器进行测试
-            self.analysis_enabled = True
-            print(f"嵌入式MediaPipe摄像头 {target_camera_index} 启动成功，分析功能已启用: {self.analysis_enabled}")
+            print(f"嵌入式MediaPipe摄像头 {target_camera_index} 启动成功，分析功能状态: {self.analysis_enabled}")
             print(f"线程使用控制器检测器实例ID: {id(self.detector)}")
             print(f"线程实际使用的检测器实例ID: {id(self.camera_thread.detector)}")
             return True
@@ -387,6 +375,10 @@ class EmbeddedMediaPipeCameraController(CameraController):
             # 设置参数
             self.resolution = resolution
             self.fps = fps
+            
+            # 根据enable_face_detection参数设置分析功能状态
+            self.analysis_enabled = enable_face_detection
+            print(f"根据参数设置分析功能状态: {self.analysis_enabled}")
             
             # 创建嵌入式控件（不使用父类的CameraWidget），传入共享的检测器实例
             print(f"控制器初始化时检测器实例ID: {id(self.detector)}")
@@ -424,8 +416,7 @@ class EmbeddedMediaPipeCameraController(CameraController):
             camera_test_result = self._test_camera_with_retry()
             print(f"摄像头测试结果: {camera_test_result}")
             
-            # 为了调试，不自动启用人脸检测，保持禁用状态
-            print(f"分析功能保持禁用: {self.analysis_enabled}")
+            print(f"分析功能状态: {self.analysis_enabled}")
             
             # 如果测试成功，自动启动摄像头
             if camera_test_result:
@@ -631,42 +622,54 @@ class EmbeddedMediaPipeCameraController(CameraController):
         return available_cameras
     
     def _test_camera_index_silent(self, index: int) -> bool:
-        """静默测试摄像头索引，避免错误日志"""
+        """静默测试摄像头索引，使用V4L2优先策略"""
         start_time = time.time()
-        try:
-            # 使用CAP_ANY后端，避免V4L2错误
-            cap = cv2.VideoCapture(index, cv2.CAP_ANY)
-            
-            # 添加超时检查
-            if time.time() - start_time > 5.0:
-                print(f"⚠ 摄像头索引 {index} 打开超时，跳过")
-                if cap.isOpened():
+        
+        # 使用与camera_controller.py相同的后端优先策略
+        backends = [
+            cv2.CAP_V4L2,   # 优先使用V4L2（针对Linux设备）
+            cv2.CAP_ANY,    # 次选自动选择
+            cv2.CAP_FFMPEG  # 最后尝试FFMPEG
+        ]
+        
+        for backend in backends:
+            try:
+                cap = cv2.VideoCapture(index, backend)
+                
+                # 添加超时检查
+                if time.time() - start_time > 5.0:
+                    print(f"⚠ 摄像头索引 {index} 打开超时，跳过")
+                    if cap.isOpened():
+                        cap.release()
+                    return False
+                
+                if not cap.isOpened():
+                    continue
+                
+                # 设置快速超时
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                
+                # 添加读取超时保护
+                read_start = time.time()
+                ret, frame = cap.read()
+                
+                if time.time() - read_start > 3.0:
+                    print(f"⚠ 摄像头索引 {index} 读取超时，跳过")
                     cap.release()
-                return False
-            
-            if not cap.isOpened():
-                return False
-            
-            # 设置快速超时
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            
-            # 添加读取超时保护
-            read_start = time.time()
-            ret, frame = cap.read()
-            
-            if time.time() - read_start > 3.0:
-                print(f"⚠ 摄像头索引 {index} 读取超时，跳过")
+                    continue
+                
                 cap.release()
-                return False
-            
-            cap.release()
-            
-            return ret and frame is not None
-        except Exception as e:
-            # 记录异常但不抛出
-            if time.time() - start_time > 8.0:
-                print(f"⚠ 摄像头索引 {index} 测试超时: {e}")
-            return False
+                
+                if ret and frame is not None:
+                    return True
+                    
+            except Exception as e:
+                # 记录异常但不抛出
+                if time.time() - start_time > 8.0:
+                    print(f"⚠ 摄像头索引 {index} 测试超时: {e}")
+                continue
+        
+        return False
     
     def _test_camera(self) -> bool:
         """测试摄像头是否可用"""
@@ -840,6 +843,54 @@ class EmbeddedMediaPipeCameraController(CameraController):
     def disable_ai_analysis(self):
         """禁用AI分析（兼容性方法）"""
         return self.disable_analysis()
+    
+    def stop_camera(self):
+        """停止摄像头 - 重写父类方法以正确处理嵌入式线程"""
+        try:
+            print("=== 开始停止嵌入式MediaPipe摄像头 ===")
+            
+            # 禁用分析功能
+            if self.analysis_enabled:
+                print("禁用分析功能...")
+                self.disable_analysis()
+            
+            # 停止摄像头线程
+            if self.camera_thread:
+                print(f"停止摄像头线程: {self.camera_thread}")
+                
+                # 如果线程是自定义的嵌入式线程，确保正确停止
+                if hasattr(self.camera_thread, 'stop') and self.camera_thread.isRunning():
+                    self.camera_thread.stop()
+                    # 等待线程停止
+                    if not self.camera_thread.wait(3000):
+                        print("⚠ 摄像头线程未能及时停止，强制终止")
+                        self.camera_thread.terminate()
+                        self.camera_thread.wait(1000)
+                
+                self.camera_thread = None
+                print("✓ 摄像头线程已停止")
+            
+            # 释放检测器资源（如果有）
+            if hasattr(self, 'detector') and self.detector:
+                print("释放检测器资源...")
+                # 注意：不要删除detector实例，因为它可能被共享使用
+                # 只需要重置相关状态即可
+                if hasattr(self.detector, 'cleanup'):
+                    self.detector.cleanup()
+            
+            # 更新连接状态
+            self.is_connected = False
+            
+            # 更新显示控件
+            if self.camera_widget and hasattr(self.camera_widget, 'setText'):
+                self.camera_widget.setText("摄像头已停止")
+            
+            print("=== 嵌入式MediaPipe摄像头停止完成 ===")
+            
+        except Exception as e:
+            print(f"⚠ 停止摄像头时出错: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 def test_embedded_controller():

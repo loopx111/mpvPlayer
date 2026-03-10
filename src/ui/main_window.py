@@ -12,20 +12,24 @@ from ..ai.ad_attention_scorer import AdAttentionScorer
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, cfg: AppConfig, mqtt: Optional[MqttService], downloader: DownloadManager, player: MpvController):
+    def __init__(self, cfg: AppConfig, mqtt: Optional[MqttService], downloader: DownloadManager, player: MpvController, face_detection_enabled: bool = True, detection_mode: str = "face"):
         super().__init__()
         self.cfg = cfg
         self.mqtt = mqtt
         self.downloader = downloader
         self.player = player
+        self.face_detection_enabled = face_detection_enabled
+        self.detection_mode = detection_mode  # "face" 或 "gesture"
         
         # 初始化嵌入式MediaPipe摄像头控制器
-        self.camera_controller = EmbeddedMediaPipeCameraController()
+        self.camera_controller = EmbeddedMediaPipeCameraController(detection_mode=self.detection_mode)
         
-        # 初始化广告关注度评分器
+        # 初始化广告关注度评分器（仅在face模式下使用）
         self.ad_scorer = AdAttentionScorer()
         self.current_ad_id = None
         self.current_ad_start_time = None
+        
+        print(f"MainWindow初始化 - 检测模式: {self.detection_mode}, 人脸检测: {self.face_detection_enabled}")
         
         self.setWindowTitle("广告屏播放器控制台")
         self.resize(1200, 800)
@@ -300,8 +304,25 @@ class MainWindow(QtWidgets.QMainWindow):
         pass
     
     def _update_ad_attention_stats(self) -> None:
-        """更新广告关注度统计 - 基于累加统计方案"""
+        """更新广告关注度统计 - 只在face模式下运行"""
         try:
+            # 只在face模式下运行广告关注度统计
+            if self.detection_mode != "face":
+                # 在gesture模式下，显示提示信息并完全禁用统计功能
+                if self.detection_mode == "gesture":
+                    self.current_ad_label.setText("手势识别模式")
+                    self.current_ad_score.setText("功能已禁用")
+                    self.attention_ratio_label.setText("功能已禁用")
+                    self.absolute_attention_label.setText("功能已禁用")
+                    self.continuity_label.setText("功能已禁用")
+                    self.consistency_label.setText("功能已禁用")
+                    self.coverage_label.setText("功能已禁用")
+                    self.current_face_count_label.setText("功能已禁用")
+                    self.current_gazing_count_label.setText("功能已禁用")
+                    # 清空广告排名
+                    self.ad_ranking_widget.clear()
+                return
+            
             print(f"=== 广告关注度统计更新开始 ===")
             
             # 获取当前帧的检测数据
@@ -757,15 +778,16 @@ class MainWindow(QtWidgets.QMainWindow):
             print(f"摄像头控制器对象: {type(self.camera_controller)}")
             print(f"摄像头控制器ID: {id(self.camera_controller)}")
             
-            # 初始化MediaPipe摄像头控制器（使用第一个可用的摄像头并启用人脸检测）
+            # 初始化MediaPipe摄像头控制器（根据检测模式决定是否启用人脸检测）
             print("开始初始化摄像头控制器...")
             print(f"调用initialize方法前，检查控制器状态...")
+            print(f"人脸检测模式: {'启用' if self.face_detection_enabled else '禁用'}")
             
             success = self.camera_controller.initialize(
                 camera_index=None,  # 设置为None，让控制器自动选择可用摄像头
                 resolution=(480, 640), 
                 fps=15,
-                enable_face_detection=True  # 启用人脸检测
+                enable_face_detection=self.face_detection_enabled  # 根据检测模式决定是否启用人脸检测
             )
             
             print(f"摄像头控制器initialize方法返回结果: {success}")
@@ -787,7 +809,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 if hasattr(self.camera_controller, 'camera_thread') and self.camera_controller.camera_thread:
                     if self.camera_controller.camera_thread.isRunning():
                         print("摄像头已通过初始化自动启动，无需再次启动")
-                        self.camera_status.setText("摄像头自动运行中")
+                        if self.detection_mode == "face":
+                            self.camera_status.setText("人脸检测模式 - 摄像头运行中")
+                        else:
+                            self.camera_status.setText("手势识别模式 - 摄像头运行中")
                         self.camera_status.setStyleSheet("color: green; font-weight: bold;")
                         print("=== 摄像头设置结束 ===")
                         return
@@ -796,7 +821,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 print("开始自动启动摄像头（带重试机制）...")
                 success = self._start_camera_with_retry(max_retries=3, delay=2.0)
                 if success:
-                    self.camera_status.setText("摄像头自动运行中")
+                    if self.detection_mode == "face":
+                        self.camera_status.setText("人脸检测模式 - 摄像头运行中")
+                    else:
+                        self.camera_status.setText("手势识别模式 - 摄像头运行中")
                     self.camera_status.setStyleSheet("color: green; font-weight: bold;")
                     print("摄像头自动启动成功")
                 else:

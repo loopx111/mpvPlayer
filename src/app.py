@@ -14,6 +14,8 @@ from .comm.mqtt_service import MqttService
 from .file_dist.manager import DownloadManager
 from .player.mpv_controller import MpvController
 from .ui.main_window import MainWindow
+from .ai.gesture_controller import GestureController
+from .camera.embedded_mediapipe_controller import EmbeddedMediaPipeCameraController
 
 
 class MessageBus:
@@ -101,6 +103,10 @@ class ApplicationManager:
         self.downloader: Optional[DownloadManager] = None
         self.player: Optional[MpvController] = None
         self.ui_window: Optional[MainWindow] = None
+        self.face_detector: Optional[EmbeddedMediaPipeCameraController] = None
+        self.gesture_controller: Optional[GestureController] = None
+        self.detection_mode: str = "face"  # "face" 或 "gesture"
+        self.face_detection_enabled: bool = True  # 控制MainWindow是否启用人脸检测
         
         # 设置消息订阅
         self._setup_message_subscriptions()
@@ -243,8 +249,11 @@ class ApplicationManager:
         app = QtWidgets.QApplication(sys.argv)
         print("Qt应用实例创建成功")
         
+        # 启动检测模块（根据模式选择）
+        self._start_detection_module()
+        
         print("=== 开始创建主窗口 ===")
-        self.ui_window = MainWindow(self.cfg, self.mqtt_service, self.downloader, self.player)
+        self.ui_window = MainWindow(self.cfg, self.mqtt_service, self.downloader, self.player, self.face_detection_enabled, self.detection_mode)
         print(f"主窗口创建成功，窗口对象: {self.ui_window}")
         
         print("=== 显示主窗口 ===")
@@ -318,6 +327,90 @@ class ApplicationManager:
         health_thread = threading.Thread(target=health_check, daemon=True)
         health_thread.start()
     
+    def _start_detection_module(self) -> None:
+        """启动检测模块（根据模式选择）"""
+        if self.detection_mode == "face":
+            self._start_face_detection()
+        elif self.detection_mode == "gesture":
+            self._start_gesture_recognition()
+        else:
+            print(f"未知检测模式: {self.detection_mode}")
+    
+    def _start_face_detection(self) -> None:
+        """启动人脸检测"""
+        try:
+            # 设置MainWindow中人脸检测的启用状态
+            # 在MainWindow初始化时会检查这个状态
+            self.face_detection_enabled = True
+            print("人脸检测模式已设置")
+        except Exception as e:
+            print(f"设置人脸检测模式失败: {e}")
+    
+    def _start_gesture_recognition(self) -> None:
+        """启动手势识别"""
+        try:
+            # 设置MainWindow中人脸检测的禁用状态
+            self.face_detection_enabled = False
+            
+            self.gesture_controller = GestureController()
+            
+            # 手势回调函数
+            def gesture_callback(data: Dict):
+                action = data.get('action')
+                gesture = data.get('gesture')
+                print(f"检测到手势: {gesture} -> 执行动作: {action}")
+                
+                # 根据手势执行播放器控制
+                if action == "play" and self.player:
+                    self.player.play_pause()
+                elif action == "pause" and self.player:
+                    self.player.play_pause()
+                elif action == "next" and self.player:
+                    self.player.next_file()
+                elif action == "volume_up" and self.player:
+                    self.player.set_volume(self.player.volume + 10)
+                elif action == "volume_down" and self.player:
+                    self.player.set_volume(self.player.volume - 10)
+            
+            # 启动手势识别（自动选择摄像头）
+            if self.gesture_controller.start(callback=gesture_callback):
+                print("手势识别模块已启动")
+            else:
+                print("手势识别模块启动失败")
+                
+        except Exception as e:
+            print(f"启动手势识别失败: {e}")
+    
+    def switch_detection_mode(self, mode: str) -> bool:
+        """
+        切换检测模式
+        
+        Args:
+            mode: 检测模式 ("face" 或 "gesture")
+            
+        Returns:
+            切换是否成功
+        """
+        if mode not in ["face", "gesture"]:
+            print(f"无效的检测模式: {mode}")
+            return False
+        
+        # 停止当前模式
+        if self.detection_mode == "face" and self.face_detector:
+            # 停止人脸检测
+            pass
+        elif self.detection_mode == "gesture" and self.gesture_controller:
+            self.gesture_controller.stop()
+        
+        # 切换模式
+        self.detection_mode = mode
+        
+        # 启动新模式
+        self._start_detection_module()
+        
+        print(f"检测模式已切换到: {mode}")
+        return True
+    
     def cleanup(self) -> None:
         """清理资源"""
         self.health_check.stop()
@@ -326,6 +419,21 @@ class ApplicationManager:
             self.player.cleanup()
         if self.mqtt_service:
             self.mqtt_service.stop()
+        if self.gesture_controller:
+            self.gesture_controller.stop()
+        if self.face_detector:
+            # 停止人脸检测
+            if hasattr(self.face_detector, 'stop_camera'):
+                self.face_detector.stop_camera()
+        # 清理摄像头控制器（如果存在）
+        if hasattr(self, 'ui_window') and self.ui_window:
+            if hasattr(self.ui_window, 'camera_controller') and self.ui_window.camera_controller:
+                try:
+                    print("开始清理摄像头控制器...")
+                    self.ui_window.camera_controller.stop_camera()
+                    print("摄像头控制器清理完成")
+                except Exception as e:
+                    print(f"清理摄像头控制器时出错: {e}")
 
 
 def main() -> None:
@@ -337,6 +445,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='MPV Player Application')
     parser.add_argument('-c', '--config', help='指定配置文件路径', default=None)
     parser.add_argument('--remote-mode', action='store_true', help='远程模式优化，避免连接断开')
+    parser.add_argument('--detection-mode', choices=['face', 'gesture'], default='face', 
+                       help='检测模式: face=人脸检测, gesture=手势识别')
     args = parser.parse_args()
     
     # 设置远程模式环境变量
@@ -352,6 +462,9 @@ def main() -> None:
         cfg = load_config()
     
     app_manager = ApplicationManager(cfg)
+    
+    # 设置检测模式
+    app_manager.detection_mode = args.detection_mode
     
     try:
         app_manager.start_components()
