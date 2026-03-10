@@ -21,8 +21,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.face_detection_enabled = face_detection_enabled
         self.detection_mode = detection_mode  # "face" 或 "gesture"
         
-        # 初始化嵌入式MediaPipe摄像头控制器
-        self.camera_controller = EmbeddedMediaPipeCameraController(detection_mode=self.detection_mode)
+        # 初始化嵌入式MediaPipe摄像头控制器，并传递MPV播放器实例
+        self.camera_controller = EmbeddedMediaPipeCameraController(detection_mode=self.detection_mode, player=self.player)
         
         # 初始化广告关注度评分器（仅在face模式下使用）
         self.ad_scorer = AdAttentionScorer()

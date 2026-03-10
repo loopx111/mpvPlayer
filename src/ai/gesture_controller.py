@@ -17,12 +17,13 @@ from .mediapipe_hand_gesture_detector import MediaPipeHandGestureDetector
 class GestureController:
     """手势识别控制器"""
     
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: Dict = None, player=None):
         """
         初始化手势控制器
         
         Args:
             config: 配置参数
+            player: MPV播放器控制器实例
         """
         self.config = config or {}
         self.detector: Optional[MediaPipeHandGestureDetector] = None
@@ -30,11 +31,12 @@ class GestureController:
         self.thread: Optional[threading.Thread] = None
         self.camera: Optional[cv2.VideoCapture] = None
         self.callback: Optional[Callable] = None
+        self.player = player  # MPV播放器控制器
         
         # 手势控制映射
         self.gesture_actions = {
-            "fist": "pause",
-            "open_palm": "play",
+            "fist": "play",           # 拳头：继续播放
+            "open_palm": "pause",      # 张开手掌：暂停播放
             "thumb_up": "volume_up",
             "victory": "next",
             "ok": "ok",
@@ -44,7 +46,7 @@ class GestureController:
             "counting_4": "seek_backward",
             "counting_5": "restart"
         }
-        
+            
         # 性能统计
         self.frame_count = 0
         self.start_time = time.time()
@@ -296,14 +298,28 @@ class GestureController:
         # 处理每个手势
         for gesture in gestures:
             action = self.gesture_actions.get(gesture)
-            if action and self.callback:
+            if action:
                 try:
-                    # 执行回调
-                    self.callback({
-                        'action': action,
-                        'gesture': gesture,
-                        'timestamp': current_time
-                    })
+                    # 优先使用MPV播放器直接控制
+                    if self.player and hasattr(self.player, 'toggle_pause'):
+                        if gesture == "open_palm":
+                            # 张开手掌：暂停播放
+                            if self._is_mpv_playing():
+                                self.player.toggle_pause()
+                                print(f"手势控制: 张开手掌 -> 暂停播放")
+                        elif gesture == "fist":
+                            # 拳头：继续播放
+                            if not self._is_mpv_playing():
+                                self.player.toggle_pause()
+                                print(f"手势控制: 拳头 -> 继续播放")
+                    
+                    # 如果有回调函数，也执行回调
+                    if self.callback:
+                        self.callback({
+                            'action': action,
+                            'gesture': gesture,
+                            'timestamp': current_time
+                        })
                     
                     # 更新最后动作时间
                     self.last_action_time = current_time
@@ -311,6 +327,18 @@ class GestureController:
                     
                 except Exception as e:
                     print(f"手势回调执行失败: {e}")
+    
+    def _is_mpv_playing(self) -> bool:
+        """检查MPV是否正在播放（通过IPC查询状态）"""
+        try:
+            if self.player and hasattr(self.player, 'query_mpv_status'):
+                status = self.player.query_mpv_status()
+                if isinstance(status, dict) and 'paused' in status:
+                    return not status['paused']  # paused=True表示暂停，False表示播放
+            return True  # 默认认为正在播放
+        except Exception as e:
+            print(f"查询MPV播放状态失败: {e}")
+            return True  # 默认认为正在播放
     
     def set_gesture_action(self, gesture: str, action: str) -> None:
         """
@@ -339,7 +367,7 @@ def main():
     def gesture_callback(data: Dict):
         print(f"收到手势动作: {data}")
     
-    controller = GestureController()
+    controller = GestureController(config={}, player=None)
     
     try:
         if controller.start(callback=gesture_callback):

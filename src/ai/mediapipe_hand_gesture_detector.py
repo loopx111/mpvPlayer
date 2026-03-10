@@ -134,16 +134,24 @@ class MediaPipeHandGestureDetector:
         # 调试信息：打印置信度值
         print(f"拳头置信度: {fist_score:.3f}, 张开手掌置信度: {open_palm_score:.3f}, 手掌张开度: {palm_openness:.3f}")
         
-        # 决策逻辑：选择置信度更高的手势
-        if fist_score > 0.7 and fist_score > open_palm_score:
-            return "fist"
-        elif open_palm_score > 0.6 and open_palm_score > fist_score:
-            return "open_palm"
-        elif 0.3 <= palm_openness <= 0.7:
-            # 中间状态，避免误判
-            return "transition"
-        else:
-            return "unknown"
+        # 决策逻辑：考虑手掌张开度的极端情况
+        if palm_openness < 0.3:  # 手掌张开度很低，优先判断为拳头
+            if fist_score > 0.4:  # 降低拳头阈值要求
+                return "fist"
+            else:
+                return "unknown"
+        elif palm_openness > 0.7:  # 手掌张开度很高，优先判断为手掌
+            if open_palm_score > 0.4:  # 降低手掌阈值要求
+                return "open_palm"
+            else:
+                return "unknown"
+        else:  # 中间状态，使用原来的逻辑
+            if fist_score > 0.6 and fist_score > open_palm_score:
+                return "fist"
+            elif open_palm_score > 0.6 and open_palm_score > fist_score:
+                return "open_palm"
+            else:
+                return "unknown"
     
     def _calculate_palm_openness(self, landmarks) -> float:
         """计算手掌张开度（0-1）"""
@@ -188,8 +196,14 @@ class MediaPipeHandGestureDetector:
         # 距离越小，拳头置信度越高
         distance_score = max(0, 1.0 - avg_tip_distance / 0.15)
         
-        # 综合置信度
-        confidence = (bent_ratio + distance_score) / 2.0
+        # 检查手掌张开度 - 手掌张开度越低，拳头置信度越高
+        palm_openness = self._calculate_palm_openness(landmarks)
+        openness_score = 1.0 - palm_openness  # 反相关
+        
+        # 综合置信度（考虑手掌张开度）
+        confidence = (bent_ratio * 0.4 + 
+                     distance_score * 0.3 + 
+                     openness_score * 0.3)
         
         return confidence
     
@@ -210,13 +224,7 @@ class MediaPipeHandGestureDetector:
         # 伸直手指比例（至少3个手指伸直即可）
         straight_ratio = max(0, (fingers_straight - 2) / 2.0)  # 3个手指=0.5, 4个手指=1.0
         
-        # 检查手指间距（张开程度）
-        finger_spacing_score = 0.0
-        if len(finger_tips) > 1:
-            for i in range(len(finger_tips) - 1):
-                distance = self._calculate_distance(landmarks[finger_tips[i]], landmarks[finger_tips[i+1]])
-                finger_spacing_score += min(distance / 0.06, 1.0)  # 降低间距阈值到0.06
-            finger_spacing_score /= (len(finger_tips) - 1)
+        # 去掉手指间距因素，专注于手指伸直和手掌张开度
         
         # 检查手掌平坦度（更宽松）
         palm_flatness = self._check_palm_flatness(landmarks, [0, 5, 9, 13, 17])
@@ -224,15 +232,18 @@ class MediaPipeHandGestureDetector:
         # 检查手掌张开度（新加的指标）
         palm_openness = self._calculate_palm_openness(landmarks)
         
-        # 综合置信度（更侧重手指伸直和手掌张开度）
-        confidence = (straight_ratio * 0.4 + 
-                     finger_spacing_score * 0.2 + 
-                     palm_flatness * 0.2 + 
-                     palm_openness * 0.2)
+        # 综合置信度（专注于手指伸直和手掌张开度）
+        confidence = (straight_ratio * 0.3 + 
+                     palm_flatness * 0.1 + 
+                     palm_openness * 0.6)  # 增加手指伸直权重，去掉手指间距
         
         # 如果至少有3个手指伸直，增加基础置信度
         if fingers_straight >= 3:
             confidence = max(confidence, 0.7)
+            
+        # 如果手掌张开度很高（>0.8），直接提高置信度
+        if palm_openness > 0.8:
+            confidence = max(confidence, palm_openness * 0.8)
         
         return min(confidence, 1.0)
     

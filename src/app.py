@@ -352,7 +352,7 @@ class ApplicationManager:
             # 设置MainWindow中人脸检测的禁用状态
             self.face_detection_enabled = False
             
-            self.gesture_controller = GestureController()
+            self.gesture_controller = GestureController(config={}, player=self.player)
             
             # 手势回调函数
             def gesture_callback(data: Dict):

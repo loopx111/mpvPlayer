@@ -313,19 +313,20 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
 class EmbeddedMediaPipeCameraController(CameraController):
     """嵌入式MediaPipe摄像头控制器"""
     
-    def __init__(self, detection_mode: str = "face"):
+    def __init__(self, detection_mode: str = "face", player=None):
         super().__init__()
         
         # 检测模式
         self.detection_mode = detection_mode
+        self.player = player  # MPV播放器实例
         
         # 嵌入式检测器 - 创建共享实例
         self.detector = EmbeddedMediaPipeDetector()
         
-        # 手势控制器 - 在gesture模式下使用
+        # 手势控制器 - 在gesture模式下使用，并传递MPV播放器实例
         if detection_mode == "gesture":
             from src.ai.gesture_controller import GestureController
-            self.gesture_controller = GestureController()
+            self.gesture_controller = GestureController(config={}, player=self.player)
             self.gesture_controller.start()
         else:
             self.gesture_controller = None
