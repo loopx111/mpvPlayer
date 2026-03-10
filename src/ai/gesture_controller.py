@@ -51,7 +51,13 @@ class GestureController:
         self.last_action_time = 0
         self.action_cooldown = 2.0  # 动作冷却时间(秒)
         
-        print("手势控制器初始化完成")
+        # 性能优化参数
+        self.max_fps = 10  # 最大处理帧率
+        self.last_process_time = 0
+        self.skip_frames = 0  # 跳帧计数器
+        self.skip_frame_interval = 2  # 每2帧处理1帧
+        
+        print("手势控制器初始化完成（性能优化版）")
     
     def _find_available_camera(self, preferred_index: int = 2) -> int:
         """
@@ -173,7 +179,7 @@ class GestureController:
     
     def process_frame(self, frame: np.ndarray) -> Optional[Dict]:
         """
-        处理摄像头帧数据 - 支持手势检测和旋转处理
+        处理摄像头帧数据 - 性能优化版本
         
         Args:
             frame: 输入图像帧 (BGR格式，480x640竖屏)
@@ -185,29 +191,55 @@ class GestureController:
             return None
             
         try:
+            # 性能优化：帧率控制和跳帧机制
+            current_time = time.time()
+            time_interval = current_time - self.last_process_time
+            
+            # 如果时间间隔太短，跳过处理以控制帧率
+            if time_interval < 1.0 / self.max_fps:
+                self.skip_frames += 1
+                return None
+            
+            # 跳帧机制：每隔几帧处理一次
+            self.skip_frames += 1
+            if self.skip_frames % self.skip_frame_interval != 0:
+                return None
+            
+            self.last_process_time = current_time
+            
             # 检测手势
             detection_results = self.detector.detect_hands(frame)
             
-            # 在原始图像上绘制手势信息
-            display_frame = frame.copy()
-            display_frame = self.detector.draw_hand_landmarks(display_frame, detection_results)
-            
-            # 注意：旋转操作由嵌入式控制器统一处理，这里不进行旋转
-            # 嵌入式控制器会在所有检测路径完成后统一进行顺时针90度旋转
-            
-            # 处理识别到的手势
-            gestures = detection_results.get('gestures', [])
-            if gestures:
-                self._process_gestures(gestures)
-            
-            # 返回结果 - 注意：返回未旋转的帧，旋转由控制器统一处理
-            result = {
-                'gestures': gestures,
-                'hands_count': detection_results.get('hands_count', 0),
-                'display_frame': display_frame,  # 未旋转的帧
-                'original_frame': frame,
-                'rotated': False  # 标记为未旋转，由控制器统一旋转
-            }
+            # 性能优化：只在检测到手部时才绘制
+            if detection_results['hands_count'] > 0:
+                # 在原始图像上绘制手势信息
+                display_frame = frame.copy()
+                display_frame = self.detector.draw_hand_landmarks(display_frame, detection_results)
+                
+                # 处理识别到的手势
+                gestures = detection_results.get('gestures', [])
+                if gestures:
+                    self._process_gestures(gestures)
+                
+                # 返回结果 - 注意：返回未旋转的帧，旋转由控制器统一处理
+                result = {
+                    'gestures': gestures,
+                    'hands_count': detection_results.get('hands_count', 0),
+                    'display_frame': display_frame,  # 未旋转的帧
+                    'original_frame': frame,
+                    'rotated': False,  # 标记为未旋转，由控制器统一旋转
+                    'fps': detection_results.get('fps', 0)
+                }
+            else:
+                # 没有检测到手部，直接返回原始帧
+                result = {
+                    'gestures': [],
+                    'hands_count': 0,
+                    'display_frame': frame,  # 未旋转的帧
+                    'original_frame': frame,
+                    'rotated': False,
+                    'fps': detection_results.get('fps', 0)
+                }
             
             return result
             

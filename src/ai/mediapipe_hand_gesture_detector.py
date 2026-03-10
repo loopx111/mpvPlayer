@@ -28,12 +28,13 @@ class MediaPipeHandGestureDetector:
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
         
-        # 创建手部检测器
+        # 创建手部检测器 - 使用优化的参数
         self.hands = self.mp_hands.Hands(
-            model_complexity=0,  # 0=轻量级，1=完整版
+            model_complexity=0,  # 0=轻量级（最快），1=完整版
             min_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
-            max_num_hands=2  # 最多检测2只手
+            max_num_hands=1,  # 只检测1只手，提高性能
+            static_image_mode=False  # 视频模式，利用帧间跟踪
         )
         
         # 手势定义
@@ -55,7 +56,7 @@ class MediaPipeHandGestureDetector:
     
     def detect_hands(self, image: np.ndarray) -> Dict:
         """
-        检测图像中的手部
+        检测图像中的手部 - 性能优化版本
         
         Args:
             image: 输入图像 (BGR格式)
@@ -63,8 +64,18 @@ class MediaPipeHandGestureDetector:
         Returns:
             检测结果字典
         """
+        # 性能优化：降低图像分辨率
+        original_height, original_width = image.shape[:2]
+        if original_width > 320:  # 如果图像宽度大于320，进行下采样
+            scale_factor = 320.0 / original_width
+            new_width = 320
+            new_height = int(original_height * scale_factor)
+            resized_image = cv2.resize(image, (new_width, new_height))
+        else:
+            resized_image = image
+        
         # 转换为RGB格式
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
         image_rgb.flags.writeable = False
         
         # 手部检测
@@ -78,7 +89,8 @@ class MediaPipeHandGestureDetector:
             'hand_landmarks': [],
             'handedness': [],  # 左右手信息
             'gestures': [],
-            'fps': 0
+            'fps': 0,
+            'original_size': (original_width, original_height)
         }
         
         # 统计手部数量
@@ -87,9 +99,9 @@ class MediaPipeHandGestureDetector:
             detection_results['hand_landmarks'] = results.multi_hand_landmarks
             detection_results['handedness'] = results.multi_handedness
             
-            # 识别手势
-            for hand_landmarks in results.multi_hand_landmarks:
-                gesture = self._recognize_gesture(hand_landmarks)
+            # 识别手势 - 只识别第一个手
+            if results.multi_hand_landmarks:
+                gesture = self._recognize_gesture(results.multi_hand_landmarks[0])
                 detection_results['gestures'].append(gesture)
         
         # 计算FPS
@@ -256,7 +268,7 @@ class MediaPipeHandGestureDetector:
     
     def draw_hand_landmarks(self, image: np.ndarray, detection_results: Dict) -> np.ndarray:
         """
-        在图像上绘制手部关键点和手势信息
+        在图像上绘制手部关键点和手势信息 - 性能优化版本
         
         Args:
             image: 输入图像
@@ -266,8 +278,11 @@ class MediaPipeHandGestureDetector:
             绘制后的图像
         """
         if detection_results['hand_landmarks']:
-            for i, hand_landmarks in enumerate(detection_results['hand_landmarks']):
-                # 绘制关键点
+            # 只绘制第一个手的关键点，提高性能
+            if detection_results['hand_landmarks']:
+                hand_landmarks = detection_results['hand_landmarks'][0]
+                
+                # 简化的关键点绘制 - 只绘制主要点
                 self.mp_drawing.draw_landmarks(
                     image,
                     hand_landmarks,
@@ -277,26 +292,22 @@ class MediaPipeHandGestureDetector:
                 )
                 
                 # 显示手势信息
-                if i < len(detection_results['gestures']):
-                    gesture = detection_results['gestures'][i]
-                    handedness = "左" if i < len(detection_results['handedness']) and \
-                        detection_results['handedness'][i].classification[0].label == 'Left' else "右"
+                if detection_results['gestures']:
+                    gesture = detection_results['gestures'][0]
                     
                     # 获取手腕位置
                     wrist = hand_landmarks.landmark[0]
                     x = int(wrist.x * image.shape[1])
                     y = int(wrist.y * image.shape[0])
                     
-                    # 显示手势信息
-                    gesture_text = f"{handedness}手: {gesture}"
+                    # 简化显示文本
+                    gesture_text = f"{gesture}"
                     cv2.putText(image, gesture_text, (x, y-20), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
         
-        # 显示统计信息
-        cv2.putText(image, f"手部数量: {detection_results['hands_count']}", 
-                   (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # 简化统计信息显示
         cv2.putText(image, f"FPS: {detection_results['fps']:.1f}", 
-                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                   (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
         return image
     
