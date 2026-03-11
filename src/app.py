@@ -223,6 +223,10 @@ class ApplicationManager:
             show_controls=self.cfg.player.showControls
         )
         
+        # 将播放器实例设置到MQTT服务中（用于播放列表分发）
+        if self.mqtt_service:
+            self.mqtt_service.set_player_instance(self.player)
+        
         # 注册播放器健康检查
         def check_player() -> bool:
             # 播放器健康检查：如果队列为空或正在播放，则认为健康

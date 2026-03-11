@@ -184,7 +184,7 @@ class GestureController:
     
     def process_frame(self, frame: np.ndarray) -> Optional[Dict]:
         """
-        处理摄像头帧数据 - 简化的实时版本
+        处理摄像头帧数据 - 增强版本，支持详细统计信息
         
         Args:
             frame: 输入图像帧 (BGR格式，480x640竖屏)
@@ -226,8 +226,22 @@ class GestureController:
                 
                 # 处理当前检测到的手势（实时处理，不使用缓冲区）
                 if current_gesture != "unknown":
-                    # 打印手势信息（无论是否变化，但限制频率）
-                    print(f"手势：{self._get_gesture_display_name(current_gesture)}")
+                    # 打印详细的统计信息
+                    gesture_display_name = self._get_gesture_display_name(current_gesture)
+                    fps = detection_results.get('fps', 0)
+                    hands_count = detection_results.get('hands_count', 0)
+                    
+                    # 显示详细统计信息（每10帧显示一次，避免过于频繁）
+                    if self.frame_count % 10 == 0:
+                        print(f"=== 手势识别统计 ===")
+                        print(f"手势: {gesture_display_name}")
+                        print(f"手部数量: {hands_count}")
+                        print(f"处理帧率: {fps:.1f} FPS")
+                        print(f"累计帧数: {self.frame_count}")
+                        print("======================")
+                    else:
+                        # 普通模式只显示手势名称
+                        print(f"手势：{gesture_display_name}")
                     
                     # 处理手势动作（应用冷却时间机制）
                     self._process_gestures([current_gesture])
@@ -249,6 +263,10 @@ class GestureController:
                 # 没有检测到手部，直接返回原始帧
                 # 重置手势状态
                 self.last_stable_gesture = "unknown"
+                
+                # 每20帧显示一次无手部检测的信息
+                if self.frame_count % 20 == 0:
+                    print("未检测到手部")
                 
                 result = {
                     'gestures': [],

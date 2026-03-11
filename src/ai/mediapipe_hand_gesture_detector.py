@@ -360,21 +360,31 @@ class MediaPipeHandGestureDetector:
         return 1.0 - min(y_range, 0.2) / 0.2  # 归一化到0-1
     
     def _is_thumb_up(self, landmarks) -> bool:
-        """检测大拇指向上"""
-        # 检查大拇指是否竖起，其他手指弯曲
+        """检测大拇指向上 - 改进版本"""
+        # 更精确的大拇指向上检测
         thumb_tip = landmarks[4]
         thumb_ip = landmarks[3]
+        thumb_mcp = landmarks[2]
         
-        # 大拇指竖起
-        if thumb_tip.y < thumb_ip.y:
-            # 检查其他手指是否弯曲
-            other_finger_tips = [8, 12, 16, 20]
-            other_finger_mcps = [5, 9, 13, 17]
+        # 检查大拇指是否竖起（Y轴方向）
+        thumb_raised = thumb_tip.y < thumb_ip.y and thumb_tip.y < thumb_mcp.y
+        
+        if thumb_raised:
+            # 检查其他手指是否弯曲（更严格的条件）
+            other_finger_tips = [8, 12, 16, 20]  # 食指、中指、无名指、小指指尖
+            other_finger_pips = [6, 10, 14, 18]  # 近端指间关节
             
-            for tip, mcp in zip(other_finger_tips, other_finger_mcps):
-                if landmarks[tip].y < landmarks[mcp].y:  # 其他手指伸直
-                    return False
-            return True
+            bent_fingers = 0
+            total_fingers = len(other_finger_tips)
+            
+            for tip, pip in zip(other_finger_tips, other_finger_pips):
+                # 如果指尖在PIP关节上方，说明手指弯曲
+                if landmarks[tip].y > landmarks[pip].y:
+                    bent_fingers += 1
+            
+            # 至少3个其他手指弯曲才认为是真正的大拇指向上
+            return bent_fingers >= 3
+        
         return False
     
     def _is_victory(self, landmarks) -> bool:
