@@ -61,6 +61,11 @@ class GestureController:
 
         # 手势状态跟踪
         self.last_stable_gesture = None  # 上一个稳定的手势
+        self.normal_gesture_buffer = []  # 普通手势缓冲区，用于连续检测
+        self.emergency_gesture_buffer = []  # 紧急手势缓冲区，用于连续检测
+        self.required_confirmations = 0  # 需要连续确认的次数（紧急呼叫手势需要更多确认）
+        self.gesture_threshold = 5  # 普通手势连续确认阈值
+        self.emergency_threshold = 8  # 紧急呼叫手势连续确认阈值（更高要求）
         
         # 紧急呼叫功能相关状态
         self.emergency_state = "idle"  # 紧急呼叫状态：idle(空闲态), asking(询问态), confirmed(确认态)
@@ -340,6 +345,53 @@ class GestureController:
         except Exception as e:
             return None
     
+    def _check_gesture_consistency(self, current_gesture: str) -> bool:
+        """检查手势是否连续确认达到阈值"""
+        # 如果是unknown手势，清空缓冲区
+        if current_gesture == "unknown":
+            self.normal_gesture_buffer = []
+            return False
+        
+        # 将当前手势添加到缓冲区
+        self.normal_gesture_buffer.append(current_gesture)
+        
+        # 保持缓冲区大小不超过阈值
+        if len(self.normal_gesture_buffer) > self.gesture_threshold:
+            self.normal_gesture_buffer.pop(0)
+        
+        # 检查缓冲区中是否连续出现相同手势
+        if len(self.normal_gesture_buffer) >= self.gesture_threshold:
+            # 检查是否所有手势都相同
+            if all(gesture == current_gesture for gesture in self.normal_gesture_buffer):
+                print(f"手势连续确认成功: {current_gesture} (连续{len(self.normal_gesture_buffer)}次)")
+                self.normal_gesture_buffer = []  # 清空缓冲区
+                return True
+        
+        return False
+    
+    def _check_emergency_gesture_consistency(self, current_gesture: str) -> bool:
+        """检查紧急呼叫手势是否连续确认达到更高阈值"""
+        # 紧急呼叫手势需要更高的确认要求
+        if current_gesture not in ["open_palm", "fist"]:
+            return False
+        
+        # 将当前手势添加到缓冲区
+        self.emergency_gesture_buffer.append(current_gesture)
+        
+        # 保持缓冲区大小不超过紧急阈值
+        if len(self.emergency_gesture_buffer) > self.emergency_threshold:
+            self.emergency_gesture_buffer.pop(0)
+        
+        # 检查缓冲区中是否连续出现相同手势
+        if len(self.emergency_gesture_buffer) >= self.emergency_threshold:
+            # 检查是否所有手势都相同
+            if all(gesture == current_gesture for gesture in self.emergency_gesture_buffer):
+                print(f"紧急手势连续确认成功: {current_gesture} (连续{len(self.emergency_gesture_buffer)}次)")
+                self.emergency_gesture_buffer = []  # 清空缓冲区
+                return True
+        
+        return False
+    
     def _get_gesture_display_name(self, gesture: str) -> str:
         """获取手势的显示名称"""
         gesture_names = {
@@ -378,30 +430,46 @@ class GestureController:
                 if self.emergency_help_file and self.emergency_call_file:
                     # 存在紧急呼叫文件：拳头和张开手掌用于紧急呼叫
                     if gesture == "open_palm":
-                        # 张开手掌：启动紧急呼叫帮助流程
-                        self._start_emergency_help()
-                        self.last_action_time = current_time
-                        print("手势控制: 张开手掌 -> 启动紧急呼叫")
+                        # 张开手掌：需要连续确认达到紧急阈值
+                        if self._check_emergency_gesture_consistency(gesture):
+                            # 启动紧急呼叫帮助流程
+                            self._start_emergency_help()
+                            self.last_action_time = current_time
+                            print("手势控制: 张开手掌 -> 启动紧急呼叫（已连续确认）")
+                        else:
+                            print(f"手势检测: 张开手掌（还需{self.emergency_threshold - len(self.emergency_gesture_buffer)}次确认）")
                     elif gesture == "fist":
-                        # 拳头：在正常模式下保持继续播放功能
-                        if self.player and hasattr(self.player, 'toggle_pause'):
-                            if not self._is_mpv_playing():
-                                self.player.toggle_pause()
-                                print(f"手势控制: 拳头 -> 继续播放")
-                        self.last_action_time = current_time
+                        # 拳头：在正常模式下保持继续播放功能，需要普通连续确认
+                        if self._check_gesture_consistency(gesture):
+                            if self.player and hasattr(self.player, 'toggle_pause'):
+                                if not self._is_mpv_playing():
+                                    self.player.toggle_pause()
+                                    print(f"手势控制: 拳头 -> 继续播放（已连续确认）")
+                            self.last_action_time = current_time
+                        else:
+                            print(f"手势检测: 拳头（还需{self.gesture_threshold - len(self.normal_gesture_buffer)}次确认）")
                     else:
-                        # 其他手势保持原有功能
-                        self._process_normal_gesture(gesture, current_time)
+                        # 其他手势保持原有功能，需要普通连续确认
+                        if self._check_gesture_consistency(gesture):
+                            self._process_normal_gesture(gesture, current_time)
+                        else:
+                            print(f"手势检测: {gesture}（还需{self.gesture_threshold - len(self.normal_gesture_buffer)}次确认）")
                 else:
-                    # 不存在紧急呼叫文件：保持原有手势功能
-                    self._process_normal_gesture(gesture, current_time)
+                    # 不存在紧急呼叫文件：保持原有手势功能，需要普通连续确认
+                    if self._check_gesture_consistency(gesture):
+                        self._process_normal_gesture(gesture, current_time)
+                    else:
+                        print(f"手势检测: {gesture}（还需{self.gesture_threshold - len(self.normal_gesture_buffer)}次确认）")
             
             elif self.emergency_state == "asking":
-                # 询问态：只处理拳头手势（确认紧急呼叫）
+                # 询问态：只处理拳头手势（确认紧急呼叫），需要连续确认
                 if gesture == "fist":
-                    # 检测到拳头手势：确认紧急呼叫
-                    self._confirm_emergency_call()
-                    self.last_action_time = current_time
+                    if self._check_emergency_gesture_consistency(gesture):
+                        # 检测到拳头手势：确认紧急呼叫
+                        self._confirm_emergency_call()
+                        self.last_action_time = current_time
+                    else:
+                        print(f"紧急确认: 拳头（还需{self.emergency_threshold - len(self.emergency_gesture_buffer)}次确认）")
                 # 询问态下检测到其他手势（包括手掌）不处理
                 
             elif self.emergency_state == "confirmed":
