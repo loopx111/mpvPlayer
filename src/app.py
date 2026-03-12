@@ -257,7 +257,8 @@ class ApplicationManager:
         self._start_detection_module()
         
         print("=== 开始创建主窗口 ===")
-        self.ui_window = MainWindow(self.cfg, self.mqtt_service, self.downloader, self.player, self.face_detection_enabled, self.detection_mode)
+        # 传递已创建的手势控制器实例，避免重复创建
+        self.ui_window = MainWindow(self.cfg, self.mqtt_service, self.downloader, self.player, self.face_detection_enabled, self.detection_mode, self.gesture_controller)
         print(f"主窗口创建成功，窗口对象: {self.ui_window}")
         
         print("=== 显示主窗口 ===")
@@ -356,7 +357,7 @@ class ApplicationManager:
             # 设置MainWindow中人脸检测的禁用状态
             self.face_detection_enabled = False
             
-            self.gesture_controller = GestureController(config={}, player=self.player)
+            self.gesture_controller = GestureController(config=self.cfg.to_dict(), player=self.player)
             
             # 手势回调函数
             def gesture_callback(data: Dict):

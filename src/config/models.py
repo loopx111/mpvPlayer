@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import Optional, List
+from dataclasses import dataclass, field, asdict
+from typing import Optional, List, Dict, Any
 
 
 @dataclass
@@ -58,3 +58,7 @@ class AppConfig:
         self.mqtt.heartbeatInterval = max(5000, min(self.mqtt.heartbeatInterval, 120000))
         self.download.maxConcurrent = max(1, min(self.download.maxConcurrent, 10))
         self.player.volume = max(0, min(self.player.volume, 100))
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """将配置对象转换为字典"""
+        return asdict(self)

@@ -12,7 +12,7 @@ from ..ai.ad_attention_scorer import AdAttentionScorer
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, cfg: AppConfig, mqtt: Optional[MqttService], downloader: DownloadManager, player: MpvController, face_detection_enabled: bool = True, detection_mode: str = "face"):
+    def __init__(self, cfg: AppConfig, mqtt: Optional[MqttService], downloader: DownloadManager, player: MpvController, face_detection_enabled: bool = True, detection_mode: str = "face", gesture_controller=None):
         super().__init__()
         self.cfg = cfg
         self.mqtt = mqtt
@@ -21,8 +21,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.face_detection_enabled = face_detection_enabled
         self.detection_mode = detection_mode  # "face" 或 "gesture"
         
-        # 初始化嵌入式MediaPipe摄像头控制器，并传递MPV播放器实例
-        self.camera_controller = EmbeddedMediaPipeCameraController(detection_mode=self.detection_mode, player=self.player)
+        # 初始化嵌入式MediaPipe摄像头控制器，并传递MPV播放器实例和已存在的手势控制器
+        self.camera_controller = EmbeddedMediaPipeCameraController(detection_mode=self.detection_mode, player=self.player, gesture_controller=gesture_controller)
         
         # 初始化广告关注度评分器（仅在face模式下使用）
         self.ad_scorer = AdAttentionScorer()

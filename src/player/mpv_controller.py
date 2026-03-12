@@ -24,6 +24,7 @@ class MpvController:
             
         self.log.info(f"检测到系统: {system}, 使用 mpv 路径: {self.mpv_exe}")
         self.queue: List[Path] = []
+        self.current_playlist: List[Path] = []  # 当前播放列表（用于紧急呼叫）
         self.loop = loop
         self.volume = volume
         self._lock = threading.Lock()
@@ -211,6 +212,83 @@ class MpvController:
     def play(self, file: Path) -> None:
         """播放文件（异步）"""
         self._queue_command("_play_internal", file)
+    
+    def play_single_file(self, file_path: str, loop: bool = False) -> None:
+        """
+        播放单个文件（用于紧急呼叫功能）
+        
+        Args:
+            file_path: 文件路径字符串
+            loop: 是否循环播放
+        """
+        file = Path(file_path)
+        if file.exists():
+            # 保存当前播放列表
+            if hasattr(self, 'queue') and self.queue:
+                self.log.info("保存当前播放列表以用于紧急呼叫")
+            
+            # 直接播放单个文件，强制使用单文件模式
+            self._queue_command("_play_single_file_internal", file, loop)
+            self.log.info(f"紧急呼叫：播放文件 {file.name} (循环: {loop})")
+        else:
+            self.log.error(f"紧急呼叫文件不存在: {file_path}")
+    
+    def _play_single_file_internal(self, file: Path, loop: bool = False) -> None:
+        """内部单文件播放实现（用于紧急呼叫，强制使用单文件模式）"""
+        self.log.info(f"紧急呼叫：开始播放文件: {file.name} (循环: {loop})")
+        
+        # 停止当前播放
+        self._stop_current_playback()
+        
+        # 构建 mpv 命令
+        cmd = [self.mpv_exe]
+        
+        # 检测是否在无头模式中运行
+        is_headless = self._is_headless_mode()
+        
+        if is_headless:
+            self.log.info("检测到无头模式，调整 MPV 参数")
+            # 无头模式下的参数
+            cmd.extend([
+                file.as_posix(),  # 播放单个文件
+                f"--volume={self.volume}",
+                "--no-terminal",
+                "--vo=null",  # 无视频输出
+                "--ao=null",  # 无音频输出
+                "--no-video"  # 不加载视频
+            ])
+        else:
+            # 紧急呼叫强制使用单文件播放模式
+            self.log.info("紧急呼叫：强制使用单文件播放模式")
+            cmd.extend(self._build_single_file_command(file, loop))
+        
+        self.log.info(f"紧急呼叫：启动 MPV 命令: {' '.join(cmd)}")
+        
+        # 启动 mpv 进程
+        try:
+            self.log.info("启动 MPV 进程")
+            # 根据操作系统选择不同的启动方式
+            if platform.system().lower() == "windows":
+                # Windows系统使用CREATE_NO_WINDOW避免控制台窗口
+                process = subprocess.Popen(
+                    cmd, 
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+            else:
+                # Linux/Unix系统不使用特殊标志
+                process = subprocess.Popen(cmd)
+                
+            self.current_process = process
+            self.log.info(f"MPV 进程已启动，PID: {process.pid}")
+        except Exception as e:
+            self.log.error(f"启动 MPV 失败: {e}")
+            # 尝试不使用特殊标志
+            try:
+                process = subprocess.Popen(cmd)
+                self.current_process = process
+                self.log.info(f"MPV 进程已启动（不使用特殊标志），PID: {process.pid}")
+            except Exception as e2:
+                self.log.error("第二次启动 MPV 失败: %s", e2)
 
     def _is_headless_mode(self) -> bool:
         """检测是否在无头模式中运行"""
@@ -349,7 +427,7 @@ class MpvController:
         
         return cmd
     
-    def _build_single_file_command(self, file: Path) -> List[str]:
+    def _build_single_file_command(self, file: Path, loop: bool = False) -> List[str]:
         """构建单文件播放模式的mpv命令"""
         cmd = [
             file.as_posix(),  # 播放单个文件
@@ -385,8 +463,8 @@ class MpvController:
                 "--vo=x11"              # 强制使用x11视频输出
             ])
         
-        # 添加循环设置
-        if self.loop:
+        # 添加循环设置（根据参数决定）
+        if loop:
             cmd.append("--loop-file=inf")
         
         return cmd
@@ -398,29 +476,30 @@ class MpvController:
             
         try:
             self.log.info("终止当前播放进程")
-            self.current_process.terminate()
+            current_process = self.current_process
+            self.current_process = None  # 立即清空，避免竞态条件
+            current_process.terminate()
             
             # 等待进程终止
-            def wait_for_termination():
+            def wait_for_termination(process):
                 try:
-                    self.current_process.wait(timeout=3)
+                    process.wait(timeout=3)
                     self.log.info("播放进程已正常终止")
                 except subprocess.TimeoutExpired:
                     self.log.warning("进程终止超时，强制杀死进程")
                     try:
-                        self.current_process.kill()
+                        process.kill()
                         self.log.info("进程已被强制杀死")
                     except:
                         pass
-                finally:
-                    self.current_process = None
             
             # 在后台线程中等待进程终止，避免阻塞命令工作线程
-            termination_thread = threading.Thread(target=wait_for_termination, daemon=True)
+            termination_thread = threading.Thread(target=wait_for_termination, args=(current_process,), daemon=True)
             termination_thread.start()
             
         except Exception as e:
             self.log.warning("终止播放进程时出现异常: %s", e)
+            self.current_process = None
             try:
                 self.current_process.kill()
                 self.current_process = None
@@ -493,6 +572,28 @@ class MpvController:
         # 播放下一个文件
         self.log.info(f"自动切换到下一个文件: {self.queue[next_index].name}")
         self._play_internal(self.queue[next_index])
+    
+    def set_playlist(self, playlist: List[Path]) -> None:
+        """设置播放列表（用于紧急呼叫后恢复原始播放列表）"""
+        self._queue_command("_set_playlist_internal", playlist)
+    
+    def _set_playlist_internal(self, playlist: List[Path]) -> None:
+        """内部设置播放列表实现"""
+        if not playlist:
+            self.log.warning("播放列表为空，无法设置")
+            return
+            
+        with self._lock:
+            self.queue = playlist
+            self.current_file_index = 0
+            self.current_playlist = playlist.copy()
+            
+        self.log.info(f"已设置播放列表，包含 {len(playlist)} 个文件")
+        
+        # 开始播放第一个文件
+        if playlist:
+            self._play_internal(playlist[0])
+            self.log.info("开始播放原始播放列表")
 
     def stop_play(self) -> None:
         """停止播放（异步）"""

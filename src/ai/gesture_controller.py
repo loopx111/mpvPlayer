@@ -7,17 +7,17 @@
 
 import cv2
 import numpy as np
-import mediapipe as mp
 import time
 import threading
-from typing import Dict, Optional, Callable
+import os
+from typing import Optional, Callable
 from .mediapipe_hand_gesture_detector import MediaPipeHandGestureDetector
 
 
 class GestureController:
     """手势识别控制器"""
     
-    def __init__(self, config: Dict = None, player=None):
+    def __init__(self, config: dict = None, player=None):
         """
         初始化手势控制器
         
@@ -61,8 +61,65 @@ class GestureController:
 
         # 手势状态跟踪
         self.last_stable_gesture = None  # 上一个稳定的手势
+        
+        # 紧急呼叫功能相关状态
+        self.emergency_state = "idle"  # 紧急呼叫状态：idle(空闲态), asking(询问态), confirmed(确认态)
+        self.emergency_help_played_count = 0  # help.mp4播放次数
+        self.original_playlist = []  # 原始播放列表
+        self.emergency_help_file = None  # help.mp4文件路径
+        self.emergency_call_file = None  # call.mp4文件路径
+        
+        # 紧急呼叫检测标记
+        self.emergency_gesture_detected = False  # 是否检测到确认手势
+        self.emergency_gesture_time = 0  # 检测到确认手势的时间
+        
+        # 检查紧急呼叫文件是否存在
+        self._check_emergency_files()
 
-        print("手势控制器初始化完成（性能优化版 + 稳定检测）")
+        print("手势控制器初始化完成（性能优化版 + 稳定检测 + 紧急呼叫功能）")
+    
+    def _check_emergency_files(self) -> None:
+        """检查紧急呼叫相关文件是否存在"""
+        # 获取下载目录路径（视频下载目录）
+        download_dir = self.config.get('download', {}).get('path', '.')
+        
+        # 打印详细的配置信息用于调试
+        print(f"=== 紧急呼叫文件检测调试信息 ===")
+        print(f"完整配置: {self.config}")
+        print(f"download配置: {self.config.get('download', {})}")
+        print(f"下载目录路径: {download_dir}")
+        print(f"下载目录是否存在: {os.path.exists(download_dir)}")
+        
+        # 检查help.mp4和call.mp4文件
+        help_file = os.path.join(download_dir, 'help.mp4')
+        call_file = os.path.join(download_dir, 'call.mp4')
+        
+        help_exists = os.path.exists(help_file)
+        call_exists = os.path.exists(call_file)
+        
+        # 打印文件路径详细信息
+        print(f"help.mp4完整路径: {help_file}")
+        print(f"call.mp4完整路径: {call_file}")
+        print(f"help.mp4是否存在: {help_exists}")
+        print(f"call.mp4是否存在: {call_exists}")
+        
+        # 列出下载目录中的所有文件
+        if os.path.exists(download_dir):
+            files = os.listdir(download_dir)
+            print(f"下载目录中的文件列表: {files}")
+        else:
+            print("下载目录不存在，无法列出文件")
+        
+        print("================================")
+        
+        if help_exists and call_exists:
+            self.emergency_help_file = help_file
+            self.emergency_call_file = call_file
+            print(f"检测到紧急呼叫文件: help.mp4={help_exists}, call.mp4={call_exists}")
+            print("紧急呼叫功能已启用：拳头和张开手掌将用于紧急呼叫操作")
+        else:
+            print(f"紧急呼叫文件不存在: help.mp4={help_exists}, call.mp4={call_exists}")
+            print("紧急呼叫功能未启用：拳头和张开手掌保持原有播放控制功能")
     
     def _find_available_camera(self, preferred_index: int = 2) -> int:
         """
@@ -182,7 +239,7 @@ class GestureController:
                 print(f"手势识别循环异常: {e}")
                 time.sleep(1)
     
-    def process_frame(self, frame: np.ndarray) -> Optional[Dict]:
+    def process_frame(self, frame: np.ndarray) -> Optional[dict]:
         """
         处理摄像头帧数据 - 增强版本，支持详细统计信息
         
@@ -302,7 +359,7 @@ class GestureController:
     
     def _process_gestures(self, gestures: list) -> None:
         """
-        处理识别到的手势
+        处理识别到的手势 - 支持紧急呼叫模式
         
         Args:
             gestures: 手势列表
@@ -315,36 +372,203 @@ class GestureController:
         
         # 处理每个手势
         for gesture in gestures:
-            action = self.gesture_actions.get(gesture)
-            if action:
-                try:
-                    # 优先使用MPV播放器直接控制
-                    if self.player and hasattr(self.player, 'toggle_pause'):
-                        if gesture == "open_palm":
-                            # 张开手掌：暂停播放
-                            if self._is_mpv_playing():
-                                self.player.toggle_pause()
-                                print(f"手势控制: 张开手掌 -> 暂停播放")
-                        elif gesture == "fist":
-                            # 拳头：继续播放
+            # 根据紧急呼叫状态处理手势
+            if self.emergency_state == "idle":
+                # 空闲态：根据紧急呼叫文件是否存在决定手势行为
+                if self.emergency_help_file and self.emergency_call_file:
+                    # 存在紧急呼叫文件：拳头和张开手掌用于紧急呼叫
+                    if gesture == "open_palm":
+                        # 张开手掌：启动紧急呼叫帮助流程
+                        self._start_emergency_help()
+                        self.last_action_time = current_time
+                        print("手势控制: 张开手掌 -> 启动紧急呼叫")
+                    elif gesture == "fist":
+                        # 拳头：在正常模式下保持继续播放功能
+                        if self.player and hasattr(self.player, 'toggle_pause'):
                             if not self._is_mpv_playing():
                                 self.player.toggle_pause()
                                 print(f"手势控制: 拳头 -> 继续播放")
-                    
-                    # 如果有回调函数，也执行回调
-                    if self.callback:
-                        self.callback({
-                            'action': action,
-                            'gesture': gesture,
-                            'timestamp': current_time
-                        })
-                    
-                    # 更新最后动作时间
+                        self.last_action_time = current_time
+                    else:
+                        # 其他手势保持原有功能
+                        self._process_normal_gesture(gesture, current_time)
+                else:
+                    # 不存在紧急呼叫文件：保持原有手势功能
+                    self._process_normal_gesture(gesture, current_time)
+            
+            elif self.emergency_state == "asking":
+                # 询问态：只处理拳头手势（确认紧急呼叫）
+                if gesture == "fist":
+                    # 检测到拳头手势：确认紧急呼叫
+                    self._confirm_emergency_call()
                     self.last_action_time = current_time
-                    print(f"手势动作: {gesture} -> {action}")
-                    
-                except Exception as e:
-                    print(f"手势回调执行失败: {e}")
+                # 询问态下检测到其他手势（包括手掌）不处理
+                
+            elif self.emergency_state == "confirmed":
+                # 确认态：不处理任何手势，等待call视频播放结束
+                pass
+    
+    def _confirm_emergency_call(self) -> None:
+        """确认紧急呼叫，从询问态切换到确认态"""
+        print("紧急呼叫确认：检测到拳头手势，确认需要救援")
+        
+        # 停止当前正在播放的help视频
+        if self.player and hasattr(self.player, '_stop_current_playback'):
+            self.player._stop_current_playback()
+            print("已停止help视频播放")
+        
+        # 切换到确认态
+        self.emergency_state = "confirmed"
+        
+        # 播放紧急呼叫确认视频
+        self._play_emergency_call()
+    
+    def _process_normal_gesture(self, gesture: str, current_time: float) -> None:
+        """处理正常模式下的手势"""
+        action = self.gesture_actions.get(gesture)
+        if action:
+            try:
+                # 优先使用MPV播放器直接控制
+                if self.player and hasattr(self.player, 'toggle_pause'):
+                    if gesture == "open_palm":
+                        # 张开手掌：暂停播放
+                        if self._is_mpv_playing():
+                            self.player.toggle_pause()
+                            print(f"手势控制: 张开手掌 -> 暂停播放")
+                    elif gesture == "fist":
+                        # 拳头：继续播放
+                        if not self._is_mpv_playing():
+                            self.player.toggle_pause()
+                            print(f"手势控制: 拳头 -> 继续播放")
+                
+                # 如果有回调函数，也执行回调
+                if self.callback:
+                    self.callback({
+                        'action': action,
+                        'gesture': gesture,
+                        'timestamp': current_time
+                    })
+                
+                # 更新最后动作时间
+                self.last_action_time = current_time
+                print(f"手势动作: {gesture} -> {action}")
+                
+            except Exception as e:
+                print(f"手势回调执行失败: {e}")
+    
+    def _start_emergency_help(self) -> None:
+        """开始紧急呼叫帮助流程"""
+        if not self.emergency_help_file or not self.player:
+            print("无法启动紧急呼叫：缺少必要文件或播放器")
+            return
+        
+        # 保存当前播放列表
+        if hasattr(self.player, 'queue') and self.player.queue:
+            self.original_playlist = self.player.queue.copy()
+            print(f"DEBUG: 保存原始播放列表，长度: {len(self.original_playlist)}")
+            if self.original_playlist:
+                print(f"DEBUG: 第一个文件: {self.original_playlist[0]}")
+        else:
+            print("DEBUG: 无法保存播放列表，queue为空或不存在")
+        
+        # 设置紧急呼叫状态为询问态
+        self.emergency_state = "asking"
+        self.emergency_help_played_count = 0
+        self.emergency_gesture_detected = False
+        self.emergency_gesture_time = 0
+        
+        # 播放help.mp4
+        self._play_emergency_help()
+        
+        print("紧急呼叫流程已启动：进入询问态，正在播放帮助视频")
+    
+    def _play_emergency_help(self) -> None:
+        """播放紧急呼叫帮助视频"""
+        if not self.emergency_help_file or not self.player:
+            return
+        
+        # 检查是否已经播放3次或状态已改变
+        if self.emergency_help_played_count >= 3 or self.emergency_state != "asking":
+            print(f"帮助视频已播放{self.emergency_help_played_count}次，状态{self.emergency_state}，停止播放")
+            return
+        
+        # 播放help.mp4，启用循环播放
+        if hasattr(self.player, 'play_single_file'):
+            # 第一次播放时，设置循环播放，并设置超时定时器
+            if self.emergency_help_played_count == 0:
+                self.player.play_single_file(self.emergency_help_file, loop=True)
+                # 设置超时定时器：视频时长（约11秒）× 3次播放 + 缓冲时间 = 约40秒
+                print("帮助视频开始循环播放，设置40秒超时")
+                threading.Timer(40.0, self._handle_emergency_timeout).start()
+            
+        self.emergency_help_played_count += 1
+        print(f"第 {self.emergency_help_played_count} 次播放帮助视频（循环播放）")
+        
+        # 第3次播放后，记录日志（超时已经在第一次播放时设置）
+        if self.emergency_help_played_count >= 3:
+            print("帮助视频已播放3次，等待用户确认或超时")
+    
+    def _play_emergency_call(self) -> None:
+        """播放紧急呼叫确认视频"""
+        if not self.emergency_call_file or not self.player:
+            return
+        
+        # 确保当前状态是confirmed才播放call视频
+        if self.emergency_state != "confirmed":
+            print(f"警告：尝试在状态{self.emergency_state}下播放call视频，跳过")
+            return
+        
+        # 播放call.mp4，播放完整视频
+        if hasattr(self.player, 'play_single_file'):
+            self.player.play_single_file(self.emergency_call_file)
+        
+        print("播放紧急呼叫确认视频（完整播放）")
+        
+        # 设置定时器，等待视频自然结束（根据视频时长设置，call视频约17秒）
+        threading.Timer(20.0, self._check_call_video_end).start()
+    
+    def _check_call_video_end(self) -> None:
+        """检查call视频是否播放结束"""
+        if self.emergency_state == "confirmed":
+            print("call视频播放结束，恢复原始播放列表")
+            # 添加调试信息
+            print(f"DEBUG: 原始播放列表长度: {len(self.original_playlist)}")
+            if self.original_playlist:
+                print(f"DEBUG: 第一个文件: {self.original_playlist[0]}")
+            else:
+                print("DEBUG: 原始播放列表为空")
+            self._end_emergency_mode()
+    
+    def _handle_emergency_timeout(self) -> None:
+        """处理紧急呼叫超时"""
+        if self.emergency_state == "asking" and not self.emergency_gesture_detected:
+            # 询问态超时：播放3次help视频后仍未检测到确认手势
+            print("紧急呼叫超时：3次播放后未检测到确认手势，恢复正常播放")
+            self._end_emergency_mode()
+    
+    def _end_emergency_mode(self) -> None:
+        """结束紧急呼叫模式，恢复原始播放列表"""
+        # 重置状态
+        self.emergency_state = "idle"
+        self.emergency_help_played_count = 0
+        self.emergency_gesture_detected = False
+        
+        # 添加调试信息
+        print(f"DEBUG: _end_emergency_mode调用，原始播放列表长度: {len(self.original_playlist)}")
+        
+        # 恢复原始播放列表（注意：不要停止当前播放，让MPV自然过渡）
+        if self.original_playlist and hasattr(self.player, 'set_playlist'):
+            print(f"DEBUG: 调用set_playlist恢复播放列表")
+            self.player.set_playlist(self.original_playlist)
+            self.original_playlist = []
+        else:
+            print("DEBUG: 无法恢复播放列表，条件不满足")
+            # 如果无法恢复播放列表，至少停止当前播放
+            if self.player and hasattr(self.player, '_stop_current_playback'):
+                print("DEBUG: 调用_stop_current_playback停止播放")
+                self.player._stop_current_playback()
+        
+        print("紧急呼叫模式已结束，恢复原始播放列表")
     
     def _is_mpv_playing(self) -> bool:
         """检查MPV是否正在播放（通过IPC查询状态）"""
@@ -369,7 +593,7 @@ class GestureController:
         self.gesture_actions[gesture] = action
         print(f"设置手势映射: {gesture} -> {action}")
     
-    def get_performance_stats(self) -> Dict:
+    def get_performance_stats(self) -> dict:
         """获取性能统计"""
         elapsed = time.time() - self.start_time
         return {
@@ -382,7 +606,7 @@ class GestureController:
 
 def main():
     """测试函数"""
-    def gesture_callback(data: Dict):
+    def gesture_callback(data: dict):
         print(f"收到手势动作: {data}")
     
     controller = GestureController(config={}, player=None)
