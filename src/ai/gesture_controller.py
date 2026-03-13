@@ -62,7 +62,7 @@ class GestureController:
         # 手势状态跟踪
         self.last_stable_gesture = None  # 上一个稳定的手势
         self.normal_gesture_buffer = []  # 普通手势缓冲区，用于连续检测
-        self.emergency_gesture_buffer = []  # 紧急手势缓冲区，用于连续检测
+        self.emergency_gesture_buffer = []  # 紧急手势缓冲区，用于连续检测（存储(gesture, timestamp)元组）
         self.required_confirmations = 0  # 需要连续确认的次数（紧急呼叫手势需要更多确认）
         self.gesture_threshold = 5  # 普通手势连续确认阈值
         self.emergency_threshold = 8  # 紧急呼叫手势连续确认阈值（更高要求）
@@ -375,20 +375,30 @@ class GestureController:
         if current_gesture not in ["open_palm", "fist"]:
             return False
         
-        # 将当前手势添加到缓冲区
-        self.emergency_gesture_buffer.append(current_gesture)
+        import time
+        current_time = time.time()
         
-        # 保持缓冲区大小不超过紧急阈值
-        if len(self.emergency_gesture_buffer) > self.emergency_threshold:
-            self.emergency_gesture_buffer.pop(0)
+        # 清理超过2秒的旧手势记录
+        self.emergency_gesture_buffer = [
+            (gesture, timestamp) for gesture, timestamp in self.emergency_gesture_buffer
+            if current_time - timestamp <= 2.0  # 2秒时间窗口
+        ]
         
-        # 检查缓冲区中是否连续出现相同手势
+        # 添加新手势记录
+        self.emergency_gesture_buffer.append((current_gesture, current_time))
+        
+        # 检查缓冲区中是否在2秒内连续出现相同手势
         if len(self.emergency_gesture_buffer) >= self.emergency_threshold:
-            # 检查是否所有手势都相同
-            if all(gesture == current_gesture for gesture in self.emergency_gesture_buffer):
-                print(f"紧急手势连续确认成功: {current_gesture} (连续{len(self.emergency_gesture_buffer)}次)")
-                self.emergency_gesture_buffer = []  # 清空缓冲区
-                return True
+            # 检查是否所有手势都相同且在时间窗口内
+            gestures = [gesture for gesture, timestamp in self.emergency_gesture_buffer]
+            if all(gesture == current_gesture for gesture in gestures):
+                # 检查时间跨度是否在合理范围内（不超过3秒）
+                timestamps = [timestamp for gesture, timestamp in self.emergency_gesture_buffer]
+                time_span = max(timestamps) - min(timestamps)
+                if time_span <= 3.0:  # 3秒内完成连续确认
+                    print(f"紧急手势连续确认成功: {current_gesture} (连续{len(self.emergency_gesture_buffer)}次，时间跨度{time_span:.1f}秒)")
+                    self.emergency_gesture_buffer = []  # 清空缓冲区
+                    return True
         
         return False
     
@@ -424,11 +434,17 @@ class GestureController:
         
         # 处理每个手势
         for gesture in gestures:
+            # 打印当前系统状态用于调试
+            if self.emergency_help_file and self.emergency_call_file:
+                print(f"紧急呼叫模式 - 状态: {self.emergency_state}, 检测到手势: {gesture}")
+            else:
+                print(f"普通模式 - 检测到手势: {gesture}")
+            
             # 根据紧急呼叫状态处理手势
             if self.emergency_state == "idle":
                 # 空闲态：根据紧急呼叫文件是否存在决定手势行为
                 if self.emergency_help_file and self.emergency_call_file:
-                    # 存在紧急呼叫文件：拳头和张开手掌用于紧急呼叫
+                    # 存在紧急呼叫文件：只有张开手掌用于紧急呼叫，拳头保持原有功能
                     if gesture == "open_palm":
                         # 张开手掌：需要连续确认达到紧急阈值
                         if self._check_emergency_gesture_consistency(gesture):
@@ -439,7 +455,7 @@ class GestureController:
                         else:
                             print(f"手势检测: 张开手掌（还需{self.emergency_threshold - len(self.emergency_gesture_buffer)}次确认）")
                     elif gesture == "fist":
-                        # 拳头：在正常模式下保持继续播放功能，需要普通连续确认
+                        # 拳头：保持原有播放控制功能，需要普通连续确认
                         if self._check_gesture_consistency(gesture):
                             if self.player and hasattr(self.player, 'toggle_pause'):
                                 if not self._is_mpv_playing():
@@ -477,18 +493,13 @@ class GestureController:
                 pass
     
     def _confirm_emergency_call(self) -> None:
-        """确认紧急呼叫，从询问态切换到确认态"""
+        """确认紧急呼叫，从询问态切换到确认态（使用IPC切换）"""
         print("紧急呼叫确认：检测到拳头手势，确认需要救援")
-        
-        # 停止当前正在播放的help视频
-        if self.player and hasattr(self.player, '_stop_current_playback'):
-            self.player._stop_current_playback()
-            print("已停止help视频播放")
         
         # 切换到确认态
         self.emergency_state = "confirmed"
         
-        # 播放紧急呼叫确认视频
+        # 使用IPC切换播放call视频，而不是停止再播放
         self._play_emergency_call()
     
     def _process_normal_gesture(self, gesture: str, current_time: float) -> None:
@@ -551,7 +562,7 @@ class GestureController:
         print("紧急呼叫流程已启动：进入询问态，正在播放帮助视频")
     
     def _play_emergency_help(self) -> None:
-        """播放紧急呼叫帮助视频"""
+        """播放紧急呼叫帮助视频（使用IPC切换）"""
         if not self.emergency_help_file or not self.player:
             return
         
@@ -560,14 +571,21 @@ class GestureController:
             print(f"帮助视频已播放{self.emergency_help_played_count}次，状态{self.emergency_state}，停止播放")
             return
         
-        # 播放help.mp4，启用循环播放
-        if hasattr(self.player, 'play_single_file'):
+        # 使用IPC切换播放help.mp4，启用循环播放
+        if hasattr(self.player, '_send_mpv_load_list_command'):
             # 第一次播放时，设置循环播放，并设置超时定时器
             if self.emergency_help_played_count == 0:
-                self.player.play_single_file(self.emergency_help_file, loop=True)
-                # 设置超时定时器：视频时长（约11秒）× 3次播放 + 缓冲时间 = 约40秒
-                print("帮助视频开始循环播放，设置40秒超时")
-                threading.Timer(40.0, self._handle_emergency_timeout).start()
+                # 使用IPC加载help视频到播放列表
+                playlist_paths = [self.emergency_help_file]
+                success = self.player._send_mpv_load_list_command(playlist_paths)
+                if success:
+                    print("帮助视频通过IPC开始循环播放，设置40秒超时")
+                    # 设置超时定时器
+                    threading.Timer(40.0, self._handle_emergency_timeout).start()
+                else:
+                    print("IPC加载help视频失败，回退到普通播放")
+                    if hasattr(self.player, 'play_single_file'):
+                        self.player.play_single_file(self.emergency_help_file, loop=True)
             
         self.emergency_help_played_count += 1
         print(f"第 {self.emergency_help_played_count} 次播放帮助视频（循环播放）")
@@ -577,7 +595,7 @@ class GestureController:
             print("帮助视频已播放3次，等待用户确认或超时")
     
     def _play_emergency_call(self) -> None:
-        """播放紧急呼叫确认视频"""
+        """播放紧急呼叫确认视频（使用IPC切换）"""
         if not self.emergency_call_file or not self.player:
             return
         
@@ -586,14 +604,25 @@ class GestureController:
             print(f"警告：尝试在状态{self.emergency_state}下播放call视频，跳过")
             return
         
-        # 播放call.mp4，播放完整视频
-        if hasattr(self.player, 'play_single_file'):
-            self.player.play_single_file(self.emergency_call_file)
+        # 使用IPC切换播放call.mp4，播放完整视频（不循环播放）
+        if hasattr(self.player, '_send_mpv_load_list_command'):
+            playlist_paths = [self.emergency_call_file]
+            success = self.player._send_mpv_load_list_command(playlist_paths, loop_playlist=False)
+            if success:
+                print("紧急呼叫确认视频通过IPC开始播放（不循环）")
+            else:
+                print("IPC加载call视频失败，回退到普通播放")
+                if hasattr(self.player, 'play_single_file'):
+                    self.player.play_single_file(self.emergency_call_file)
+        else:
+            # 回退到普通播放
+            if hasattr(self.player, 'play_single_file'):
+                self.player.play_single_file(self.emergency_call_file)
         
         print("播放紧急呼叫确认视频（完整播放）")
         
-        # 设置定时器，等待视频自然结束（根据视频时长设置，call视频约17秒）
-        threading.Timer(20.0, self._check_call_video_end).start()
+        # 设置定时器，等待视频自然结束（call视频约9秒，设置10秒避免延迟）
+        threading.Timer(10.0, self._check_call_video_end).start()
     
     def _check_call_video_end(self) -> None:
         """检查call视频是否播放结束"""
@@ -626,6 +655,25 @@ class GestureController:
         
         # 恢复原始播放列表（注意：不要停止当前播放，让MPV自然过渡）
         if self.original_playlist and hasattr(self.player, 'set_playlist'):
+            # 先检查MPV进程是否健康，避免在IPC查询失败时强制重启
+            if hasattr(self.player, 'is_mpv_process_healthy'):
+                if not self.player.is_mpv_process_healthy():
+                    print("DEBUG: MPV进程不健康，跳过set_playlist避免强制重启")
+                    # 如果MPV进程不健康，使用安全的备用方法恢复播放
+                    if hasattr(self.player, '_safe_restore_playlist') and len(self.original_playlist) > 0:
+                        print(f"DEBUG: 使用安全备用方法恢复播放列表")
+                        self.player._safe_restore_playlist(self.original_playlist)
+                        self.original_playlist = []
+                        print("紧急呼叫模式已结束，通过安全备用方法恢复播放")
+                        return
+                    elif hasattr(self.player, 'play_single_file') and len(self.original_playlist) > 0:
+                        # 如果安全方法不存在，回退到单文件播放
+                        print(f"DEBUG: 使用单文件备用方法播放第一个文件: {self.original_playlist[0]}")
+                        self.player.play_single_file(self.original_playlist[0])
+                        self.original_playlist = []
+                        print("紧急呼叫模式已结束，通过单文件备用方法恢复播放")
+                        return
+            
             print(f"DEBUG: 调用set_playlist恢复播放列表")
             self.player.set_playlist(self.original_playlist)
             self.original_playlist = []

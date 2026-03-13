@@ -4,9 +4,8 @@ import subprocess
 import platform
 import queue
 import time
-import glob
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from ..utils.logger import get_logger
 
 
@@ -78,7 +77,7 @@ class MpvController:
                     else:
                         self.log.error("未知命令: %s", command)
                 except Exception as e:
-                    self.log.error(f"执行命令 {command} 时出错: {e}")
+                    self.log.error(f"执行命令 {command} 时出错: {str(e)}")
                 finally:
                     self._command_queue.task_done()
             except queue.Empty:
@@ -379,25 +378,27 @@ class MpvController:
             self.current_process = process
             self.log.info(f"MPV 进程已启动，PID: {process.pid}")
         except Exception as e:
-            self.log.error(f"启动 MPV 失败: {e}")
+            self.log.error(f"启动 MPV 失败: {str(e)}")
             # 尝试不使用特殊标志
             try:
                 process = subprocess.Popen(cmd)
                 self.current_process = process
                 self.log.info(f"MPV 进程已启动（不使用特殊标志），PID: {process.pid}")
             except Exception as e2:
-                self.log.error("第二次启动 MPV 失败: %s", e2)
+                self.log.error("第二次启动 MPV 失败: %s", str(e2))
     
     def _build_playlist_command(self) -> List[str]:
-        """构建播放列表模式的mpv命令"""
+        """构建播放列表模式的mpv命令（优化版本）"""
         cmd = [
             f"--playlist={self.playlist_file}",
             "--loop-playlist=inf",
             f"--volume={self.volume}",
-            "--keep-open=no",
+            "--keep-open=always",  # 改为always，即使播放完成也保持窗口
             "--fullscreen",
             "--cursor-autohide=3000",
-            "--input-default-bindings=yes"
+            "--input-default-bindings=yes",
+            "--idle",  # 允许在空闲时保持运行
+            "--force-window=yes"  # 强制创建窗口，即使没有视频
         ]
         
         # 添加IPC支持
@@ -428,15 +429,21 @@ class MpvController:
         return cmd
     
     def _build_single_file_command(self, file: Path, loop: bool = False) -> List[str]:
-        """构建单文件播放模式的mpv命令"""
+        """构建单文件播放模式的mpv命令（优化版本）"""
         cmd = [
-            file.as_posix(),  # 播放单个文件
+            file.as_posix(),
             f"--volume={self.volume}",
-            "--keep-open=no",
+            "--keep-open=always",  # 改为always，即使播放完成也保持窗口
             "--fullscreen",
             f"--cursor-autohide={3000}",
-            "--input-default-bindings=yes"
+            "--input-default-bindings=yes",
+            "--idle",  # 允许在空闲时保持运行
+            "--force-window=yes"  # 强制创建窗口，即使没有视频
         ]
+        
+        # 添加循环设置（根据参数决定）
+        if loop:
+            cmd.append("--loop-file=inf")
         
         # 添加IPC支持
         cmd.append("--input-ipc-server=/tmp/mpv-socket")
@@ -462,10 +469,6 @@ class MpvController:
                 "--vd=lavc,h264",       # 强制使用libavcodec h264解码器
                 "--vo=x11"              # 强制使用x11视频输出
             ])
-        
-        # 添加循环设置（根据参数决定）
-        if loop:
-            cmd.append("--loop-file=inf")
         
         return cmd
 
@@ -498,12 +501,13 @@ class MpvController:
             termination_thread.start()
             
         except Exception as e:
-            self.log.warning("终止播放进程时出现异常: %s", e)
+            self.log.warning("终止播放进程时出现异常: %s", str(e))
             self.current_process = None
             try:
-                self.current_process.kill()
-                self.current_process = None
-                self.log.info("强制杀死播放进程")
+                if self.current_process:
+                    self.current_process.kill()
+                    self.current_process = None
+                    self.log.info("强制杀死播放进程")
             except:
                 pass
 
@@ -561,17 +565,79 @@ class MpvController:
         self.log.info("用户点击下一首按钮")
         self._auto_play_next()
     
+    def switch_video_seamless(self, file: Path) -> None:
+        """无缝切换视频（通过IPC，不重启MPV进程）"""
+        self._queue_command("_switch_video_seamless_internal", file)
+
+    def _switch_video_seamless_internal(self, file: Path) -> None:
+        """内部无缝切换实现"""
+        if not self.current_process or self.current_process.poll() is not None:
+            # 如果没有活跃进程，回退到普通播放
+            self._play_internal(file)
+            return
+        
+        # 尝试通过IPC切换视频
+        if self._send_mpv_load_file_command(file.as_posix()):
+            self.log.info(f"通过IPC无缝切换到: {file.name}")
+            # 更新当前文件索引
+            try:
+                self.current_file_index = self.queue.index(file)
+                self.log.info(f"当前播放索引: {self.current_file_index + 1}/{len(self.queue)}")
+            except ValueError:
+                self.current_file_index = 0
+        else:
+            # IPC失败，回退到重启播放
+            self.log.warning("IPC切换失败，回退到重启播放")
+            self._play_internal(file)
+
+    def _send_mpv_load_file_command(self, file_path: str) -> bool:
+        """通过IPC加载单个文件"""
+        try:
+            import socket
+            import json
+            import platform
+            
+            system = platform.system().lower()
+            if system == "windows":
+                return False  # Windows暂不支持
+            
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(3.0)
+            sock.connect("/tmp/mpv-socket")
+            
+            # 发送加载文件命令
+            cmd = {
+                "command": ["loadfile", file_path, "replace"],
+                "request_id": 300
+            }
+            sock.send(json.dumps(cmd).encode() + b'\n')
+            
+            # 等待响应
+            try:
+                response = sock.recv(1024).decode()
+                self.log.debug(f"文件加载响应: {response}")
+            except socket.timeout:
+                self.log.warning("文件加载命令超时")
+            
+            sock.close()
+            self.log.info(f"通过IPC加载文件成功: {file_path}")
+            return True
+            
+        except Exception as e:
+            self.log.warning(f"IPC文件加载失败: {e}")
+            return False
+
     def _auto_play_next(self) -> None:
-        """自动播放下一个文件（用于播放完成后的自动切换）"""
+        """自动播放下一个文件（使用无缝切换）"""
         if not self.queue:
             return
             
         # 计算下一个文件的索引
         next_index = (self.current_file_index + 1) % len(self.queue)
         
-        # 播放下一个文件
-        self.log.info(f"自动切换到下一个文件: {self.queue[next_index].name}")
-        self._play_internal(self.queue[next_index])
+        # 使用无缝切换
+        self.log.info(f"自动无缝切换到下一个文件: {self.queue[next_index].name}")
+        self.switch_video_seamless(self.queue[next_index])
     
     def set_playlist(self, playlist: List[Path]) -> None:
         """设置播放列表（用于紧急呼叫后恢复原始播放列表）"""
@@ -626,9 +692,63 @@ class MpvController:
                 self._play_internal(playlist[0])
                 self.log.info("开始播放原始播放列表")
 
+    def is_mpv_process_healthy(self) -> bool:
+        """检查MPV进程是否健康（避免在IPC查询失败时强制重启）"""
+        if not self.current_process:
+            return False
+            
+        try:
+            # 检查进程是否仍在运行
+            poll_result = self.current_process.poll()
+            if poll_result is None:
+                # 进程仍在运行，尝试通过IPC查询状态
+                status = self.query_mpv_status()
+                if "error" not in str(status):
+                    # IPC查询成功，进程健康
+                    return True
+                else:
+                    # IPC查询失败，但进程仍在运行（可能只是IPC连接问题）
+                    self.log.debug("MPV进程运行但IPC连接失败，不强制重启")
+                    return True  # 返回True避免强制重启
+            else:
+                # 进程已结束
+                return False
+        except Exception as e:
+            self.log.debug(f"检查MPV进程健康状态时出错: {e}")
+            return True  # 出错时返回True，避免强制重启
+
     def stop_play(self) -> None:
         """停止播放（异步）"""
         self._queue_command("_stop_play_internal")
+    
+    def _safe_restore_playlist(self, playlist: List[Path]) -> None:
+        """安全恢复播放列表（当MPV进程健康但IPC连接不稳定时使用）"""
+        self.log.info("使用安全备用方法恢复播放列表")
+        
+        # 首先尝试通过IPC恢复播放列表
+        try:
+            if self.current_process and self.current_process.poll() is None:
+                # MPV进程仍在运行，尝试通过IPC发送播放列表
+                playlist_paths = [file.as_posix() for file in playlist]
+                success = self._send_mpv_load_list_command(playlist_paths)
+                if success:
+                    self.log.info("安全备用方法：通过IPC成功恢复播放列表")
+                    return
+        except Exception as e:
+            self.log.debug(f"安全备用方法：IPC恢复失败: {e}")
+        
+        # IPC恢复失败，使用更安全的单文件播放方法
+        if playlist:
+            self.log.info(f"安全备用方法：播放第一个文件 {playlist[0].name}")
+            self.play_single_file(playlist[0].as_posix())
+        
+        # 更新内部状态
+        with self._lock:
+            self.queue = playlist
+            self.current_file_index = 0
+            self.current_playlist = playlist.copy()
+            
+        self.log.info(f"安全备用方法：播放列表已恢复，包含 {len(playlist)} 个文件")
 
     def _send_mpv_ipc_command(self, command: str) -> bool:
         """通过IPC发送命令给MPV"""
@@ -667,8 +787,13 @@ class MpvController:
             self.log.warning(f"IPC命令失败，将使用备用方案: {e}")
             return False
     
-    def _send_mpv_load_list_command(self, file_paths: List[str]) -> bool:
-        """通过IPC发送播放列表加载命令"""
+    def _send_mpv_load_list_command(self, file_paths: List[str], loop_playlist: bool = True) -> bool:
+        """通过IPC发送播放列表加载命令
+        
+        Args:
+            file_paths: 文件路径列表
+            loop_playlist: 是否设置循环播放（默认True，用于help视频；False用于call视频）
+        """
         try:
             import socket
             import json
@@ -690,56 +815,114 @@ class MpvController:
                     "command": ["playlist-clear"],
                     "request_id": 100
                 }
-                sock.send(json.dumps(cmd_clear).encode() + b'\n')
+                clear_cmd_str = json.dumps(cmd_clear)
+                self.log.info(f"[IPC命令] 发送清空播放列表命令: {clear_cmd_str}")
+                sock.send(clear_cmd_str.encode() + b'\n')
                 
                 # 等待响应，确保命令执行完成
                 try:
                     response = sock.recv(1024).decode()
-                    self.log.debug(f"清空播放列表响应: {response}")
+                    self.log.info(f"[IPC响应] 清空播放列表响应: {response}")
                 except socket.timeout:
                     self.log.warning("清空播放列表命令超时，继续执行")
                 
-                # 逐个添加文件到播放列表
-                for i, file_path in enumerate(file_paths):
-                    cmd_add = {
-                        "command": ["loadfile", file_path, "append"],
-                        "request_id": 101 + i
+                # 使用loadfile命令强制切换文件，而不是添加到播放列表
+                # 先加载第一个文件，然后添加其他文件
+                if file_paths:
+                    # 强制加载第一个文件（替换当前播放）
+                    cmd_load = {
+                        "command": ["loadfile", file_paths[0], "replace"],
+                        "request_id": 101
                     }
-                    sock.send(json.dumps(cmd_add).encode() + b'\n')
+                    load_cmd_str = json.dumps(cmd_load)
+                    self.log.info(f"[IPC命令] 发送强制加载文件命令: {load_cmd_str}")
+                    sock.send(load_cmd_str.encode() + b'\n')
                     
-                    # 等待每个文件的响应
                     try:
                         response = sock.recv(1024).decode()
-                        self.log.debug(f"添加文件响应 {i}: {response}")
+                        self.log.info(f"[IPC响应] 强制加载文件响应: {response}")
                     except socket.timeout:
-                        self.log.warning(f"添加文件 {file_path} 命令超时")
+                        self.log.warning("强制加载文件命令超时")
+                    
+                    # 添加其他文件到播放列表
+                    for i, file_path in enumerate(file_paths[1:], 1):
+                        cmd_add = {
+                            "command": ["loadfile", file_path, "append"],
+                            "request_id": 102 + i
+                        }
+                        add_cmd_str = json.dumps(cmd_add)
+                        self.log.info(f"[IPC命令] 发送添加文件命令 {i}: {add_cmd_str}")
+                        sock.send(add_cmd_str.encode() + b'\n')
+                        
+                        try:
+                            response = sock.recv(1024).decode()
+                            self.log.info(f"[IPC响应] 添加文件响应 {i}: {response}")
+                        except socket.timeout:
+                            self.log.warning(f"添加文件 {file_path} 命令超时")
                 
-                # 设置循环播放
-                cmd_loop = {
-                    "command": ["set", "loop-playlist", "inf"],
-                    "request_id": 200
-                }
-                sock.send(json.dumps(cmd_loop).encode() + b'\n')
+                # 根据参数决定是否设置循环播放
+                if loop_playlist:
+                    # 设置循环播放（用于help视频）
+                    cmd_loop = {
+                        "command": ["set", "loop-playlist", "inf"],
+                        "request_id": 200
+                    }
+                    loop_cmd_str = json.dumps(cmd_loop)
+                    self.log.info(f"[IPC命令] 发送设置循环命令: {loop_cmd_str}")
+                    sock.send(loop_cmd_str.encode() + b'\n')
+                    
+                    # 等待循环设置响应
+                    try:
+                        response = sock.recv(1024).decode()
+                        self.log.info(f"[IPC响应] 设置循环响应: {response}")
+                    except socket.timeout:
+                        self.log.warning("设置循环命令超时")
+                else:
+                    # 清除循环播放设置（用于call视频）
+                    cmd_loop = {
+                        "command": ["set", "loop-playlist", "no"],
+                        "request_id": 200
+                    }
+                    loop_cmd_str = json.dumps(cmd_loop)
+                    self.log.info(f"[IPC命令] 发送清除循环命令: {loop_cmd_str}")
+                    sock.send(loop_cmd_str.encode() + b'\n')
+                    
+                    # 等待循环清除响应
+                    try:
+                        response = sock.recv(1024).decode()
+                        self.log.info(f"[IPC响应] 清除循环响应: {response}")
+                    except socket.timeout:
+                        self.log.warning("清除循环命令超时")
                 
-                # 等待循环设置响应
-                try:
-                    response = sock.recv(1024).decode()
-                    self.log.debug(f"设置循环响应: {response}")
-                except socket.timeout:
-                    self.log.warning("设置循环命令超时")
-                
-                # 开始播放第一个文件
-                cmd_play = {
-                    "command": ["playlist-play-index", "0"],
+                # 设置播放列表位置到第一个文件
+                cmd_set_pos = {
+                    "command": ["set_property", "playlist-pos", 0],
                     "request_id": 201
                 }
-                sock.send(json.dumps(cmd_play).encode() + b'\n')
+                pos_cmd_str = json.dumps(cmd_set_pos)
+                self.log.info(f"[IPC命令] 发送设置播放列表位置命令: {pos_cmd_str}")
+                sock.send(pos_cmd_str.encode() + b'\n')
                 
                 try:
                     response = sock.recv(1024).decode()
-                    self.log.debug(f"开始播放响应: {response}")
+                    self.log.info(f"[IPC响应] 设置播放列表位置响应: {response}")
                 except socket.timeout:
-                    self.log.warning("开始播放命令超时")
+                    self.log.warning("设置播放列表位置命令超时")
+                
+                # 发送播放命令确保开始播放
+                cmd_play = {
+                    "command": ["set_property", "pause", False],
+                    "request_id": 202
+                }
+                play_cmd_str = json.dumps(cmd_play)
+                self.log.info(f"[IPC命令] 发送播放命令: {play_cmd_str}")
+                sock.send(play_cmd_str.encode() + b'\n')
+                
+                try:
+                    response = sock.recv(1024).decode()
+                    self.log.info(f"[IPC响应] 播放命令响应: {response}")
+                except socket.timeout:
+                    self.log.warning("播放命令超时")
                 
                 sock.close()
                 self.log.info(f"通过IPC加载播放列表成功，包含 {len(file_paths)} 个文件")
@@ -749,7 +932,7 @@ class MpvController:
             self.log.warning(f"IPC播放列表加载失败: {e}")
             return False
     
-    def query_mpv_status(self) -> dict:
+    def query_mpv_status(self) -> Dict[str, Any]:
         """通过IPC查询MPV播放状态"""
         try:
             import socket
@@ -903,7 +1086,7 @@ class MpvController:
         # 立即停止当前播放
         if self.current_process:
             try:
-                self.log.info("清理MPV进程，PID: %d", self.current_process.pid)
+                self.log.info(f"清理MPV进程，PID: {self.current_process.pid}")
                 # 先尝试正常终止
                 self.current_process.terminate()
                 
@@ -968,6 +1151,45 @@ class MpvController:
         except Exception as e:
             self.log.warning(f"僵尸进程清理功能异常: {e}")
     
+    def _ensure_window_visibility(self) -> None:
+        """确保MPV窗口可见性"""
+        if platform.system().lower() == "windows":
+            # Windows窗口管理
+            try:
+                import win32gui
+                import win32con
+                
+                def find_mpv_window():
+                    windows = []
+                    def enum_windows_proc(hwnd, _):
+                        if win32gui.IsWindowVisible(hwnd):
+                            title = win32gui.GetWindowText(hwnd)
+                            if "mpv" in title.lower():
+                                windows.append(hwnd)
+                        return True
+                    
+                    win32gui.EnumWindows(enum_windows_proc, None)
+                    return windows
+                
+                mpv_windows = find_mpv_window()
+                for hwnd in mpv_windows:
+                    # 置顶窗口
+                    win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                                        win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
+                    # 最大化窗口
+                    win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+                    
+            except ImportError:
+                self.log.warning("win32gui未安装，无法进行窗口管理")
+        else:
+            # Linux窗口管理（使用wmctrl）
+            try:
+                import subprocess
+                # 查找mpv窗口并置顶
+                subprocess.run(["wmctrl", "-R", "mpv"], timeout=5)
+            except:
+                self.log.warning("wmctrl未安装或执行失败")
+
     def _start_ipc_query_timer(self) -> None:
         """启动IPC状态查询定时器（3秒周期）"""
         try:
