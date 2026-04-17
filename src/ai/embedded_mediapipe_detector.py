@@ -22,12 +22,12 @@ class EmbeddedMediaPipeDetector:
         self.mp_face_mesh = mp.solutions.face_mesh
         self.mp_drawing = mp.solutions.drawing_utils
         
-        # 性能优化配置：降低检测精度，提高处理速度
+        # 性能优化配置：调整检测精度
         self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=3,  # 减少最大人脸数量
+            max_num_faces=3,  # 支持最多3个人脸同时检测
             refine_landmarks=False,  # 关闭精细关键点（提高性能）
-            min_detection_confidence=0.3,  # 降低检测阈值，提高小尺寸人脸检测能力
-            min_tracking_confidence=0.3   # 保持跟踪阈值
+            min_detection_confidence=0.5,  # 适当的检测阈值
+            min_tracking_confidence=0.5   # 适当的跟踪阈值
         )
         
         # 性能优化标志
@@ -146,7 +146,6 @@ class EmbeddedMediaPipeDetector:
     
     def smart_draw_landmarks(self, frame, face_landmarks, face_count, face_index, is_gazing):
         """智能绘制人脸关键点"""
-        print(f"[smart_draw_landmarks] 绘制人脸{face_index}，共{face_count}张人脸")
         h, w = frame.shape[:2]
         
         # 统一使用灰色线条
@@ -316,11 +315,44 @@ class EmbeddedMediaPipeDetector:
             return self.skip_stats["skipped_frames"] / self.skip_stats["total_frames"] * 100
         
         def update_cache(self, results, face_landmarks, is_gazing):
-            """更新缓存结果"""
+            """更新缓存结果 - 添加人脸去重逻辑"""
+            # 过滤相似的人脸（去重）
+            filtered_landmarks = []
+            filtered_gazing = []
+            
+            if face_landmarks:
+                for i, lm in enumerate(face_landmarks):
+                    is_duplicate = False
+                    for existing_lm in filtered_landmarks:
+                        # 计算两个人脸的中心点距离
+                        dist = self._face_center_distance(lm, existing_lm)
+                        # 归一化坐标距离 < 0.03 视为同一人脸（大约30像素@640宽度）
+                        if dist < 0.03:
+                            is_duplicate = True
+                            break
+                    if not is_duplicate:
+                        filtered_landmarks.append(lm)
+                        if is_gazing and i < len(is_gazing):
+                            filtered_is_gazing_val = is_gazing[i]
+                        else:
+                            filtered_is_gazing_val = False
+                        filtered_gazing.append(filtered_is_gazing_val)
+            
             self.cached_results = results
-            self.cached_face_landmarks = face_landmarks
-            self.cached_is_gazing = is_gazing
-            self.last_faces_count = len(face_landmarks) if face_landmarks else 0
+            self.cached_face_landmarks = filtered_landmarks
+            self.cached_is_gazing = filtered_gazing
+            self.last_faces_count = len(filtered_landmarks) if filtered_landmarks else 0
+        
+        def _face_center_distance(self, lm1, lm2):
+            """计算两个人脸关键点的中心点距离"""
+            # 使用鼻尖（索引1）作为人脸中心点
+            def get_center(lm):
+                return (lm.landmark[1].x, lm.landmark[1].y)
+            
+            c1 = get_center(lm1)
+            c2 = get_center(lm2)
+            
+            return ((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2) ** 0.5
     
     def should_skip_frame(self, face_count):
         """智能帧跳过策略"""
@@ -362,6 +394,13 @@ class EmbeddedMediaPipeDetector:
             is_cached_result = False
             
             # 缓存当前结果（无论是否有人脸）
+            raw_face_count = len(results.multi_face_landmarks) if results.multi_face_landmarks else 0
+            if raw_face_count > 1:
+                # 打印两个人脸之间的距离，帮助调优去重阈值
+                lm = results.multi_face_landmarks
+                dist = ((lm[0].landmark[1].x - lm[1].landmark[1].x)**2 + (lm[0].landmark[1].y - lm[1].landmark[1].y)**2)**0.5
+                print(f"[原始检测] MediaPipe检测到 {raw_face_count} 张人脸，鼻尖距离: {dist:.4f}")
+            
             if results.multi_face_landmarks:
                 gazing_states = [self.check_gaze(*self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)) 
                                for face_landmarks in results.multi_face_landmarks]
@@ -387,32 +426,29 @@ class EmbeddedMediaPipeDetector:
         gazing_faces = 0
         gazing_states = []  # 存储每个人脸的注视状态
         
-        # 关键修复：确保无论是否使用缓存，gazing_faces都正确计算
-        if results.multi_face_landmarks:
-            # 如果是缓存结果，使用缓存的注视状态
-            if is_cached_result and hasattr(self.frame_optimizer, 'cached_is_gazing'):
-                gazing_states = self.frame_optimizer.cached_is_gazing
-                gazing_faces = sum(gazing_states) if gazing_states else 0
-            else:
-                # 正常计算注视状态
-                for i, face_landmarks in enumerate(results.multi_face_landmarks):
-                    # 计算头部姿态
-                    yaw, pitch, roll = self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)
-                    
-                    # 角度平滑处理（直接从原始脚本复制）
-                    alpha = 0.7
-                    yaw = alpha * yaw + (1 - alpha) * self.last_yaw
-                    pitch = alpha * pitch + (1 - alpha) * self.last_pitch
-                    roll = alpha * roll + (1 - alpha) * self.last_roll
-                    
-                    # 更新缓存角度
-                    self.last_yaw, self.last_pitch, self.last_roll = yaw, pitch, roll
-                    
-                    is_gazing = self.check_gaze(yaw, pitch, roll)
-                    gazing_states.append(is_gazing)  # 存储注视状态
-                    
-                    if is_gazing:
-                        gazing_faces += 1
+        # 始终使用去重后的人脸数据来计算注视状态，确保与人脸数一致
+        landmarks_for_gaze = self.frame_optimizer.cached_face_landmarks
+        
+        if landmarks_for_gaze:
+            # 使用去重后的人脸数据
+            for i, face_landmarks in enumerate(landmarks_for_gaze):
+                # 计算头部姿态
+                yaw, pitch, roll = self.calculate_head_pose_mediapipe(face_landmarks, frame.shape)
+                
+                # 角度平滑处理（直接从原始脚本复制）
+                alpha = 0.7
+                yaw = alpha * yaw + (1 - alpha) * self.last_yaw
+                pitch = alpha * pitch + (1 - alpha) * self.last_pitch
+                roll = alpha * roll + (1 - alpha) * self.last_roll
+                
+                # 更新缓存角度
+                self.last_yaw, self.last_pitch, self.last_roll = yaw, pitch, roll
+                
+                is_gazing = self.check_gaze(yaw, pitch, roll)
+                gazing_states.append(is_gazing)  # 存储注视状态
+                
+                if is_gazing:
+                    gazing_faces += 1
         else:
             # 无人脸时，确保gazing_faces为0
             gazing_faces = 0
@@ -421,12 +457,21 @@ class EmbeddedMediaPipeDetector:
         # 先更新帧计数器
         self.frame_count += 1
         
-        # 然后更新检测结果，确保数据完全正确
-        # 重要：确保frame_processed与frame_count完全同步
-        face_count = len(results.multi_face_landmarks) if results.multi_face_landmarks else 0
+        # 获取实际的人脸数量（优先使用缓存中的人脸数，因为raw_results可能被多次引用）
+        # 这样可以避免因帧跳过策略导致的显示滞后问题
+        if is_cached_result:
+            # 使用缓存的人脸数量（由frame_optimizer维护）
+            face_count = self.frame_optimizer.last_faces_count
+        else:
+            # 使用当前检测结果的人脸数量
+            face_count = len(results.multi_face_landmarks) if results.multi_face_landmarks else 0
+        
+        # 同时更新detection_results中的face_count（用于UI显示）
+        # 始终使用去重后的人脸数，确保UI显示与绘制一致
+        actual_display_count = len(self.frame_optimizer.cached_face_landmarks) if self.frame_optimizer.cached_face_landmarks else 0
         
         self.detection_results = {
-            'face_count': face_count,
+            'face_count': actual_display_count,  # 使用实际显示的人脸数（修复帧累积问题）
             'gazing_faces': gazing_faces,
             'face_positions': face_positions,
             'inference_time': display_inference_time,
@@ -461,15 +506,20 @@ class EmbeddedMediaPipeDetector:
         # 直接在传入的帧上绘制结果
         display_frame = frame
         
-        # 性能优化：减少绘制细节
-        if results.multi_face_landmarks:
-            # 简化绘制：只绘制轮廓，不绘制完整网格
-            for i, face_landmarks in enumerate(results.multi_face_landmarks):
-                # 使用存储的注视状态
-                is_gazing = gazing_states[i] if i < len(gazing_states) else False
+        # 始终使用去重后的人脸数据进行绘制（确保一致性）
+        # 优先使用缓存中的人脸数据（非缓存路径也会先更新缓存）
+        landmarks_to_draw = self.frame_optimizer.cached_face_landmarks
+        gazing_to_draw = self.frame_optimizer.cached_is_gazing
+        
+        if landmarks_to_draw:
+            # 添加调试打印（临时启用）
+            print(f"[去重后] 实际人脸数: {len(landmarks_to_draw)}")
+            
+            for i, face_landmarks in enumerate(landmarks_to_draw):
+                is_gazing = gazing_to_draw[i] if i < len(gazing_to_draw) else False
                 face_info = self.smart_draw_landmarks(
                     display_frame, face_landmarks, 
-                    len(results.multi_face_landmarks), i, is_gazing
+                    len(landmarks_to_draw), i, is_gazing  # 使用去重后的人数
                 )
                 face_positions.append(face_info)
         
