@@ -148,9 +148,6 @@ class EmbeddedMediaPipeDetector:
         """智能绘制人脸关键点"""
         h, w = frame.shape[:2]
         
-        # 统一使用灰色线条
-        gray_color = (128, 128, 128)
-        
         # 计算人脸边界框
         x_coords = [int(lm.x * w) for lm in face_landmarks.landmark]
         y_coords = [int(lm.y * h) for lm in face_landmarks.landmark]
@@ -158,24 +155,27 @@ class EmbeddedMediaPipeDetector:
         x_min, x_max = min(x_coords), max(x_coords)
         y_min, y_max = min(y_coords), max(y_coords)
         
-        # 统一使用6个绿色关键点绘制，无论人脸数量
-        important_landmarks = [1, 33, 263, 61, 291, 199]  # 鼻尖、眼角、嘴角、下巴
+        # 关键点颜色：注视时绿色，未注视时灰色
+        landmark_color = (0, 255, 0) if is_gazing else (128, 128, 128)
+        
+        # 绘制6个关键点：鼻尖、眼角、嘴角、下巴
+        important_landmarks = [1, 33, 263, 61, 291, 199]
         for idx in important_landmarks:
             landmark = face_landmarks.landmark[idx]
             x = int(landmark.x * w)
             y = int(landmark.y * h)
-            cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)  # 绘制绿色小圆点
+            cv2.circle(frame, (x, y), 3, landmark_color, -1)
         
-        # 绘制绿色编号
-        if is_gazing:
-            # 智能确定编号位置和角度：根据人脸关键点确定脸的方向
-            text_x_pos, text_y_pos, text_angle = self._calculate_number_position_and_angle(face_landmarks, w, h, x_min, y_min, x_max, y_max)
-            
-            # 绘制绿色数字编号（支持旋转）
-            face_num = face_index + 1
-            
-            # 使用旋转文本函数绘制
-            frame = self._draw_rotated_text(frame, f"{face_num}", (text_x_pos, text_y_pos), text_angle)
+        # 绘制编号：所有人脸都显示编号，注视时绿色，未注视时灰色
+        # 智能确定编号位置和角度：根据人脸关键点确定脸的方向
+        text_x_pos, text_y_pos, text_angle = self._calculate_number_position_and_angle(face_landmarks, w, h, x_min, y_min, x_max, y_max)
+        
+        # 绘制数字编号：注视时绿色，未注视时灰色
+        face_num = face_index + 1
+        text_color = (0, 255, 0) if is_gazing else (128, 128, 128)  # 绿色=注视，灰色=未注视
+        
+        # 使用旋转文本函数绘制
+        frame = self._draw_rotated_text(frame, f"{face_num}", (text_x_pos, text_y_pos), text_angle, color=text_color)
         
         return {
             'face_index': face_index,
@@ -322,6 +322,9 @@ class EmbeddedMediaPipeDetector:
             
             if face_landmarks:
                 for i, lm in enumerate(face_landmarks):
+                    # 先获取当前人脸的注视状态（无论后续是否去重）
+                    gazing_val = is_gazing[i] if (is_gazing and i < len(is_gazing)) else False
+                    
                     is_duplicate = False
                     for existing_lm in filtered_landmarks:
                         # 计算两个人脸的中心点距离
@@ -330,13 +333,10 @@ class EmbeddedMediaPipeDetector:
                         if dist < 0.03:
                             is_duplicate = True
                             break
+                    
                     if not is_duplicate:
                         filtered_landmarks.append(lm)
-                        if is_gazing and i < len(is_gazing):
-                            filtered_is_gazing_val = is_gazing[i]
-                        else:
-                            filtered_is_gazing_val = False
-                        filtered_gazing.append(filtered_is_gazing_val)
+                        filtered_gazing.append(gazing_val)
             
             self.cached_results = results
             self.cached_face_landmarks = filtered_landmarks
