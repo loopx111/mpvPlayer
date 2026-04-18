@@ -40,8 +40,18 @@ class EmbeddedMediaPipeDetector:
             'face_positions': [],
             'fps': 0,
             'inference_time': 0,
-            'frame_processed': 0
+            'frame_processed': 0,
+            # 5秒窗口累计统计（MQTT快照用）
+            'window_face_count': 0,      # 窗口内每帧人脸数累加
+            'window_gazing_faces': 0,    # 窗口内每帧注视数累加
+            'window_frame_count': 0,     # 窗口内有效帧数
         }
+        
+        # 窗口统计（实例变量，不放 detection_results 避免被覆盖）
+        self._window_face_count = 0
+        self._window_gazing_faces = 0
+        self._window_frame_count = 0
+        self._window_start_time = 0.0
         
         # 性能统计
         self.frame_count = 0
@@ -476,7 +486,7 @@ class EmbeddedMediaPipeDetector:
             'face_positions': face_positions,
             'inference_time': display_inference_time,
             'raw_results': results,
-            'frame_processed': self.frame_count  # 使用更新后的帧计数
+            'frame_processed': self.frame_count,  # 使用更新后的帧计数
         }
         
         # 更新FPS统计 - 直接使用实时计算
@@ -503,6 +513,36 @@ class EmbeddedMediaPipeDetector:
             self.last_fps_time = current_time
             self.fps_frame_count = 0
         
+        # 5秒窗口累计统计（MQTT快照用）
+        # 只统计有有效人脸检测结果的帧，排除跳帧复用帧
+        window_duration = 5.0  # 窗口时长（秒）
+        if self._window_start_time == 0.0:
+            self._window_start_time = current_time
+        
+        elapsed = current_time - self._window_start_time
+        
+        # 只有有有效人脸结果时才纳入统计（排除跳帧时的0增量帧）
+        has_valid_faces = actual_display_count > 0
+        if has_valid_faces:
+            self._window_face_count += actual_display_count
+            self._window_gazing_faces += gazing_faces
+            self._window_frame_count += 1
+        
+        # 窗口到期则重置，并记录新窗口起始时间
+        if elapsed >= window_duration:
+            self._window_start_time = current_time
+            self._window_face_count = 0
+            self._window_gazing_faces = 0
+            self._window_frame_count = 0
+        
+        # 实时同步到 detection_results 供外部读取
+        # 上报平均值 = 窗口内累计人脸数 / 有数帧数
+        avg_face = round(self._window_face_count / self._window_frame_count, 1) if self._window_frame_count > 0 else 0.0
+        avg_gazing = round(self._window_gazing_faces / self._window_frame_count, 1) if self._window_frame_count > 0 else 0.0
+        self.detection_results['window_face_count'] = avg_face
+        self.detection_results['window_gazing_faces'] = avg_gazing
+        self.detection_results['window_frame_count'] = self._window_frame_count
+
         # 直接在传入的帧上绘制结果
         display_frame = frame
         

@@ -30,6 +30,95 @@ class MqttService:
         self.last_status_ts = 0
         self.heartbeat_thread = None
         self._running = True
+        
+        # 当前检测数据（由外部通过 update_detection_data 更新）
+        self._current_face_count = 0
+        self._current_gazing_faces = 0
+        self._current_ad_id = ""
+        self._current_ad_position_sec = 0.0
+        self._current_fps = 0.0
+    
+    def update_detection_data(self, face_count: int, gazing_faces: int, ad_id: str, 
+                              ad_position_sec: float = 0.0, fps: float = 0.0) -> None:
+        """更新当前检测数据（供定时器读取并上报）
+        
+        Args:
+            face_count: 当前检测到的人脸数
+            gazing_faces: 当前注视中的人脸数
+            ad_id: 当前播放的广告ID/文件名
+            ad_position_sec: 广告当前播放位置（秒）
+            fps: 当前帧率
+        """
+        self._current_face_count = face_count
+        self._current_gazing_faces = gazing_faces
+        self._current_ad_id = ad_id
+        self._current_ad_position_sec = ad_position_sec
+        self._current_fps = fps
+    
+    def publish_attention_snapshot(self) -> None:
+        """发送广告关注度快照（供外部定时调用）"""
+        client_id = self.cfg.mqtt.clientId
+        device_path = self.cfg.mqtt.devicePath or self.cfg.system.devicePath
+        
+        topic = f"设备/{client_id}/数据"
+        snapshot_data = {
+            "id": client_id,
+            "path": device_path,
+            "type": "attention_snapshot",
+            "ts": int(time.time() * 1000),
+            "ad_id": self._current_ad_id,
+            "face_count": self._current_face_count,
+            "gazing_faces": self._current_gazing_faces,
+            "fps": round(self._current_fps, 1),
+            "ad_position_sec": round(self._current_ad_position_sec, 1)
+        }
+        
+        self.client.publish(topic, snapshot_data)
+        self.log.debug(f"发送关注度快照 - 主题: {topic}, 人脸数: {self._current_face_count}, 注视数: {self._current_gazing_faces}")
+    
+    def publish_ad_completed(self, ad_id: str, final_score: float, 
+                            score_breakdown: Dict[str, Any], play_statistics: Dict[str, Any]) -> None:
+        """发送广告播放完成事件（包含完整评分）
+        
+        Args:
+            ad_id: 广告ID/文件名
+            final_score: 最终评分（100分制）
+            score_breakdown: 评分维度详情 {
+                "attention_score": float,   # 注意力比率 (0-25)
+                "absolute_score": float,     # 绝对规模 (0-20)
+                "duration_score": float,     # 持续深度 (0-25)
+                "consistency_score": float,  # 稳定性 (0-15)
+                "efficiency_score": float    # 覆盖率 (0-15)
+            }
+            play_statistics: 播放统计 {
+                "total_frames": int,
+                "avg_face_count": float,
+                "avg_gazing_faces": float,
+                "attention_ratio": float,
+                "continuity_ratio": float,
+                "consistency": float,
+                "efficiency_ratio": float
+            }
+        """
+        client_id = self.cfg.mqtt.clientId
+        device_path = self.cfg.mqtt.devicePath or self.cfg.system.devicePath
+        
+        topic = f"设备/{client_id}/数据"
+        completed_data = {
+            "id": client_id,
+            "path": device_path,
+            "type": "ad_completed",
+            "ts": int(time.time() * 1000),
+            "ad_id": ad_id,
+            "final_score": final_score,
+            "score_breakdown": score_breakdown,
+            "play_statistics": play_statistics
+        }
+        
+        self.client.publish(topic, completed_data)
+        self.log.info(f"发送广告完成消息 - 广告: {ad_id}, 评分: {final_score}/100")
+
+
     
     def _run_async_loop(self):
         """运行异步事件循环"""
@@ -435,4 +524,5 @@ class MqttService:
         
         if self.heartbeat_thread:
             self.heartbeat_thread.join(timeout=5)
+        
         self.client.disconnect()

@@ -227,6 +227,12 @@ class MainWindow(QtWidgets.QMainWindow):
         timer.setInterval(1000)
         timer.timeout.connect(self.refresh)
         timer.start()
+        
+        # MQTT 关注度快照定时器（每5秒推送一次）
+        self._mqtt_snapshot_timer = QTimer(self)
+        self._mqtt_snapshot_timer.setInterval(5000)
+        self._mqtt_snapshot_timer.timeout.connect(self._push_attention_snapshot)
+        self._mqtt_snapshot_timer.start()
 
     def refresh(self) -> None:
         """刷新界面状态"""
@@ -414,6 +420,15 @@ class MainWindow(QtWidgets.QMainWindow):
                             # 结束上一个广告的跟踪
                             result = self.ad_scorer.end_ad_tracking()
                             print(f"广告 {self.current_ad_id} 跟踪结束，得分: {result.get('total_score', 0)}")
+                            
+                            # 上报广告完成消息到MQTT
+                            if self.mqtt and result.get('total_score', 0) > 0:
+                                self.mqtt.publish_ad_completed(
+                                    ad_id=self.current_ad_id,
+                                    final_score=result.get('total_score', 0),
+                                    score_breakdown=result.get('breakdown', {}),
+                                    play_statistics=result.get('statistics', {})
+                                )
                             
                             # 广告结束后显示5维度计算详情
                             self._print_five_dimension_calculation(result)
@@ -655,6 +670,51 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     
+    def _push_attention_snapshot(self) -> None:
+        """定时推送关注度快照到MQTT（每5秒调用一次）"""
+        if not self.mqtt:
+            return
+        
+        try:
+            # 获取当前检测数据
+            face_count = 0
+            gazing_faces = 0
+            fps = 0.0
+            ad_id = "无广告"
+            ad_position_sec = 0.0
+            
+            if hasattr(self.camera_controller, 'detector') and self.camera_controller.detector:
+                detection_results = self.camera_controller.detector.detection_results
+                face_count = detection_results.get('face_count', 0)
+                gazing_faces = detection_results.get('gazing_faces', 0)
+                fps = detection_results.get('fps', 0.0)
+                window_face_count = detection_results.get('window_face_count', 0)
+                window_gazing_faces = detection_results.get('window_gazing_faces', 0)
+            
+            # 获取当前广告ID和播放进度
+            if self.player and self.player.current_process:
+                ad_id = self._get_current_ad_id()
+                if ad_id == "未知广告":
+                    ad_id = "无广告"
+                # 获取播放进度（轻量方法，只查 time-pos）
+                if hasattr(self.player, 'get_playback_time'):
+                    ad_position_sec = self.player.get_playback_time()
+            
+            # 更新 MQTT 服务的当前检测数据（使用5秒窗口累计值）
+            self.mqtt.update_detection_data(
+                face_count=window_face_count,
+                gazing_faces=window_gazing_faces,
+                ad_id=ad_id,
+                ad_position_sec=ad_position_sec,
+                fps=fps
+            )
+            
+            # 手动触发一次快照上报
+            self.mqtt.publish_attention_snapshot()
+            
+        except Exception as e:
+            print(f"推送关注度快照失败: {e}")
+
     def _play_selected_file(self, item) -> None:
         """播放选中的文件"""
         try:

@@ -989,35 +989,6 @@ class MpvController:
                     
                     pause_result = json.loads(response)
                     status["paused"] = pause_result.get("data", False)
-                    
-                    # 查询播放时间
-                    cmd = {
-                        "command": ["get_property", "time-pos"],
-                        "request_id": 4
-                    }
-                    cmd_str = json.dumps(cmd)
-                    self.log.info(f"[IPC查询] 发送时间查询: {cmd_str}")
-                    sock.send(cmd_str.encode() + b'\n')
-                    response = sock.recv(1024).decode()
-                    self.log.info(f"[IPC查询] 收到时间响应: {response}")
-                    
-                    time_result = json.loads(response)
-                    status["time_pos"] = time_result.get("data", 0)
-                    
-                    # 查询播放列表位置
-                    cmd = {
-                        "command": ["get_property", "playlist-pos"],
-                        "request_id": 5
-                    }
-                    cmd_str = json.dumps(cmd)
-                    self.log.info(f"[IPC查询] 发送播放列表位置查询: {cmd_str}")
-                    sock.send(cmd_str.encode() + b'\n')
-                    response = sock.recv(1024).decode()
-                    self.log.info(f"[IPC查询] 收到播放列表位置响应: {response}")
-                    
-                    playlist_result = json.loads(response)
-                    status["playlist_pos"] = playlist_result.get("data", 0)
-                    
                     sock.close()
                     
                     self.log.info(f"[IPC查询] MPV状态查询成功: {status}")
@@ -1059,6 +1030,31 @@ class MpvController:
                 self.current_playing_file = fallback_file
                 self.log.info(f"get_current_playing_file回退到内部记录: {fallback_file}")
             return fallback_file
+
+    def get_playback_time(self) -> float:
+        """轻量查询当前播放进度（秒），仅查 time-pos 一个属性
+        
+        Returns:
+            播放进度秒数，查询失败返回 0.0
+        """
+        try:
+            import socket
+            import json
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.settimeout(1.0)
+            sock.connect("/tmp/mpv-socket")
+            cmd = json.dumps({"command": ["get_property", "time-pos"], "request_id": 99})
+            self.log.info(f"[time-pos查询] 发送: {cmd}")
+            sock.send(cmd.encode() + b'\n')
+            response = sock.recv(1024).decode()
+            sock.close()
+            result = json.loads(response)
+            time_pos = result.get("data", 0.0)
+            self.log.info(f"[time-pos查询] 收到: {time_pos}s")
+            return float(time_pos) if time_pos is not None else 0.0
+        except Exception as e:
+            self.log.info(f"[time-pos查询] 失败: {e}")
+            return 0.0
 
     def _stop_play_internal(self) -> None:
         """内部停止播放实现"""
