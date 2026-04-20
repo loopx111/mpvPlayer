@@ -479,8 +479,9 @@ class MqttService:
         def heartbeat_loop():
             while self._running:
                 try:
-                    # 发送心跳消息
-                    self._send_heartbeat()
+                    if self.client.connected:
+                        # 发送心跳消息
+                        self._send_heartbeat()
                     # 等待5秒
                     time.sleep(5)
                 except Exception as e:

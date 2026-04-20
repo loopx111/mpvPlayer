@@ -672,7 +672,7 @@ class MainWindow(QtWidgets.QMainWindow):
     
     def _push_attention_snapshot(self) -> None:
         """定时推送关注度快照到MQTT（每5秒调用一次）"""
-        if not self.mqtt:
+        if not self.mqtt or not self.mqtt.client.connected:
             return
         
         try:
@@ -700,10 +700,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 if hasattr(self.player, 'get_playback_time'):
                     ad_position_sec = self.player.get_playback_time()
             
-            # 更新 MQTT 服务的当前检测数据（使用5秒窗口累计值）
+            # 更新 MQTT 服务的当前检测数据（使用最新帧的瞬时值，实现实时反馈）
             self.mqtt.update_detection_data(
-                face_count=window_face_count,
-                gazing_faces=window_gazing_faces,
+                face_count=face_count,
+                gazing_faces=gazing_faces,
                 ad_id=ad_id,
                 ad_position_sec=ad_position_sec,
                 fps=fps

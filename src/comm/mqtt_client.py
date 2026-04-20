@@ -24,7 +24,7 @@ class MqttClient:
         self.connected = False
         self._lock = threading.Lock()
         self._reconnect_attempts = 0
-        self._max_reconnect_attempts = 5
+        self._max_reconnect_attempts = 0  # 0表示无上限，持续重连直到成功
         self._reconnect_delay_base = 1  # 初始重连延迟秒数
         self._message_queue = queue.Queue()  # 消息队列，用于重连时缓存消息
         self._running = True
