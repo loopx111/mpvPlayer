@@ -418,13 +418,8 @@ class MpvController:
                 "--sub-visibility=yes"
             ])
         
-        # 麒麟系统特定设置：禁用问题解码器，使用软件解码
-        if platform.system().lower() == "linux":
-            cmd.extend([
-                "--hwdec=no",           # 禁用硬件解码
-                "--vd=lavc,h264",       # 强制使用libavcodec h264解码器
-                "--vo=x11"              # 强制使用x11视频输出
-            ])
+        # 注意：不再强制指定解码器和视频输出，mpv 会自动选择最佳配置
+        # 之前的 --hwdec=no --vd=lavc,h264 --vo=x11 参数会禁用硬件加速，导致卡顿
         
         return cmd
     
@@ -462,13 +457,8 @@ class MpvController:
                 "--sub-visibility=yes"
             ])
         
-        # 麒麟系统特定设置：禁用问题解码器，使用软件解码
-        if platform.system().lower() == "linux":
-            cmd.extend([
-                "--hwdec=no",           # 禁用硬件解码
-                "--vd=lavc,h264",       # 强制使用libavcodec h264解码器
-                "--vo=x11"              # 强制使用x11视频输出
-            ])
+        # 注意：不再强制指定解码器和视频输出，mpv 会自动选择最佳配置
+        # 之前的 --hwdec=no --vd=lavc,h264 --vo=x11 参数会禁用硬件加速，导致卡顿
         
         return cmd
 
