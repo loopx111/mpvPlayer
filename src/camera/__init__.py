@@ -5,9 +5,14 @@
 添加AI分析功能和核心绑定优化。
 """
 
-from .camera_capture import AICameraController, VideoAnalyzer
+from .embedded_mediapipe_controller import (
+    EmbeddedMediaPipeCameraWidget,
+    EmbeddedMediaPipeCameraThread,
+    EmbeddedMediaPipeCameraController
+)
 
 __all__ = [
-    'AICameraController',
-    'VideoAnalyzer'
+    'EmbeddedMediaPipeCameraWidget',
+    'EmbeddedMediaPipeCameraThread',
+    'EmbeddedMediaPipeCameraController'
 ]

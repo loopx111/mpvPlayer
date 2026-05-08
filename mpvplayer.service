@@ -4,11 +4,13 @@ After=network.target
 
 [Service]
 Type=simple
-User=$USER
+User=kylin
+Group=kylin
 WorkingDirectory=/opt/mpvPlayer
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/$USER/.Xauthority
-ExecStart=/opt/mpvPlayer/venv/bin/python -m src.app
+Environment=XAUTHORITY=/home/kylin/.Xauthority
+# 检测模式: face=人脸专注度检测, gesture=手势识别
+ExecStart=/opt/mpvPlayer/venv/bin/python -m src.app -c data/config_kylin.json --detection-mode face
 Restart=always
 RestartSec=10
 

@@ -290,9 +290,7 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                         # 未启用检测时直接使用翻转镜像后的帧
                         display_frame = frame_mirrored
                     
-                    # 关键：将竖屏图像顺时针旋转90度以正确显示
-                    # 摄像头读取的是480×640竖屏，需要旋转为横屏显示
-                    display_frame = cv2.rotate(display_frame, cv2.ROTATE_90_CLOCKWISE)
+                    # 不再进行旋转处理，直接显示原始画面
                     
                     # 转换为RGB格式用于显示
                     frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)

@@ -198,25 +198,20 @@ class EmbeddedMediaPipeDetector:
         }
     
     def _calculate_number_position_and_angle(self, face_landmarks, w, h, x_min, y_min, x_max, y_max):
-        """计算关注标记的位置和角度，考虑UI旋转90度的影响"""
+        """计算关注标记的位置和角度"""
         # 计算人脸边界框的中心点
         face_center_x = (x_min + x_max) // 2
         face_center_y = (y_min + y_max) // 2
         
-        # 正确逻辑：原始图像中人脸是横着的，UI会顺时针旋转90度变成竖屏
-        # 旋转后，原始图像中的左侧（额头）会变成上方
+        # 位置：额头在上方，数字放在人脸上方
+        text_x_pos = face_center_x  # 人脸水平中心
+        text_y_pos = y_min - 30  # 在人脸上方30像素（额头位置）
         
-        # 位置：在原始横屏图像中，额头在左侧，所以数字应该放在左侧
-        text_x_pos = x_min - 30  # 在人脸左侧30像素（额头位置）
-        text_y_pos = face_center_y  # 人脸垂直中心
-        
-        # 角度：数字应该水平显示，头朝左（额头方向）
-        # 原始图像中人脸横着，额头在左侧，数字应该水平显示，头朝左
-        # UI旋转90度后，数字会跟着旋转到额头上方，变成竖直显示
-        text_angle = 90  # 水平显示，头朝左
+        # 角度：数字水平显示
+        text_angle = 0  # 水平显示
         
         # 确保位置在图像范围内
-        text_x_pos = max(5, min(w - 30, text_x_pos))
+        text_x_pos = max(30, min(w - 30, text_x_pos))
         text_y_pos = max(30, min(h - 10, text_y_pos))
         
         return text_x_pos, text_y_pos, text_angle

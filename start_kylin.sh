@@ -3,6 +3,16 @@
 # MPV Player Kylin V10 启动脚本
 # 适用于图形界面模式运行
 
+#=============================================================================
+# 检测模式配置
+#=============================================================================
+# 可选值: face (人脸专注度检测) 或 gesture (手势识别)
+# - face: 启用摄像头人脸检测，分析观看者对人脸的注视情况
+# - gesture: 启用手势识别，可通过手势控制播放器（暂停/播放/音量等）
+# 配置方法: 修改下方 DETECTION_MODE 变量的值
+DETECTION_MODE="face"
+#=============================================================================
+
 # 设置信号处理器
 cleanup() {
     echo "收到退出信号，正在清理..."
@@ -71,10 +81,26 @@ if ! command -v mpv &> /dev/null; then
     echo "警告: mpv 播放器未安装，请安装: sudo apt install mpv"
 fi
 
-# 创建必要的目录
-mkdir -p /opt/mpvPlayer/data/videos
-mkdir -p /opt/mpvPlayer/data/downloads
-mkdir -p /opt/mpvPlayer/data/logs
+# 创建必要的目录（需要sudo权限）
+if [ ! -d "/opt/mpvPlayer" ]; then
+    echo "创建安装目录 /opt/mpvPlayer..."
+    sudo mkdir -p /opt/mpvPlayer/data/videos
+    sudo mkdir -p /opt/mpvPlayer/data/downloads
+    sudo mkdir -p /opt/mpvPlayer/data/logs
+    sudo chown -R $USER:$USER /opt/mpvPlayer/data
+else
+    mkdir -p /opt/mpvPlayer/data/videos
+    mkdir -p /opt/mpvPlayer/data/downloads
+    mkdir -p /opt/mpvPlayer/data/logs
+fi
+
+# 设置目录权限为777，允许kylin用户写入
+if [ -d "/opt/mpvPlayer/data/videos" ]; then
+    sudo chmod 777 /opt/mpvPlayer/data/videos
+fi
+if [ -d "/opt/mpvPlayer/data/downloads" ]; then
+    sudo chmod 777 /opt/mpvPlayer/data/downloads
+fi
 
 # 确保Kylin专用的配置文件存在且格式正确
 if [ ! -f "$KYLIN_CONFIG_FILE" ]; then
@@ -195,7 +221,8 @@ fi
 
 # 启动应用
 echo "启动 MPV Player (Kylin 图形界面模式)..."
+echo "当前检测模式: $DETECTION_MODE (face=人脸专注度, gesture=手势识别)"
 export QT_QPA_PLATFORM=xcb
-$PYTHON_CMD -m src.app -c "$KYLIN_CONFIG_FILE"
+$PYTHON_CMD -m src.app -c "$KYLIN_CONFIG_FILE" --detection-mode "$DETECTION_MODE"
 
 echo "应用已退出"

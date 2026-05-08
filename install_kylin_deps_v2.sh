@@ -14,18 +14,38 @@ fi
 echo "更新包管理器..."
 sudo apt update
 
-# 安装系统依赖
+# 1. 先安装必要的底层包
+echo "安装Python虚拟环境..."
+sudo apt install -y python3-venv python3-dev
+
+# 2. 安装系统依赖（分步安装，避免依赖冲突）
 echo "安装系统依赖..."
-sudo apt install -y python3 python3-pip python3-venv mpv v4l-utils libopencv-dev libgl1-mesa-glx
+sudo apt install -y mpv v4l-utils libgl1-mesa-glx
+
+# 3. 尝试安装OpenCV（如果失败则跳过，AI功能可选）
+echo "安装OpenCV..."
+if sudo apt install -y python3-opencv libopencv-core-dev libopencv-highgui-dev 2>/dev/null; then
+    echo "OpenCV安装成功"
+else
+    echo "警告: OpenCV安装失败，AI功能可能不可用"
+    echo "      如需AI功能，请手动安装OpenCV或使用Docker部署"
+fi
 
 # 创建虚拟环境
 echo "创建Python虚拟环境..."
+rm -rf venv
 python3 -m venv venv
 
-# 激活虚拟环境并安装Python依赖
-echo "安装Python依赖..."
-./venv/bin/pip install --upgrade pip
-./venv/bin/pip install -r requirements.txt
+# 激活虚拟环境并安装Python依赖（使用清华镜像源，增加超时时间）
+echo "安装Python依赖（使用清华镜像源）..."
+./venv/bin/pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 120
+./venv/bin/pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 300 --trusted-host pypi.tuna.tsinghua.edu.cn
+
+# 如果清华源失败，尝试阿里云镜像
+if [ $? -ne 0 ]; then
+    echo "清华镜像失败，尝试阿里云镜像..."
+    ./venv/bin/pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --timeout 300 --trusted-host mirrors.aliyun.com
+fi
 
 # 设置执行权限
 chmod +x start_kylin.sh
