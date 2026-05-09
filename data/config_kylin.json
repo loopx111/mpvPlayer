@@ -1,10 +1,10 @@
 {
   "mqtt": {
-    "host": "192.168.30.55",
-    "port": 1883,
-    "clientId": "mpv-player-001",
-    "username": "baicells",
-    "password": "BlTf129",
+    "host": "112.80.221.107",
+    "port": 21883,
+    "clientId": "kylin-002",
+    "username": "cecell",
+    "password": "123456",
     "keepalive": 60,
     "cleanSession": true,
     "enabled": true,

@@ -83,3 +83,6 @@ logs/
 data/logs/
 data/downloads/
 data/videos/
+
+# Offline installer
+offline_package/
