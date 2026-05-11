@@ -100,7 +100,7 @@ def create_offline_package():
     print(f"============================================")
     print("\n使用方法：")
     print("1. 将zip文件复制到麒麟系统")
-    print("2. 解压后运行: sudo ./install_kylin_deps_v2.sh")
+    print("2. 解压后参考麒麟系统安装指南.md文件中的离线安装方式进行安装")
     print("\n按回车键退出...")
 
 

@@ -230,7 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         # MQTT 关注度快照定时器（每5秒推送一次）
         self._mqtt_snapshot_timer = QTimer(self)
-        self._mqtt_snapshot_timer.setInterval(5000)
+        self._mqtt_snapshot_timer.setInterval(1000)
         self._mqtt_snapshot_timer.timeout.connect(self._push_attention_snapshot)
         self._mqtt_snapshot_timer.start()
 
