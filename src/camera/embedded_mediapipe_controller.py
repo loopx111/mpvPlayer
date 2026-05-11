@@ -37,7 +37,8 @@ class EmbeddedMediaPipeCameraWidget(QtWidgets.QWidget):
         # 显示图像
         self.image_label = QtWidgets.QLabel()
         self.image_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.image_label.setMinimumSize(480, 640)  # 调整为竖屏尺寸
+        self.image_label.setScaledContents(False)  # 不填满，保持原始比例
+        self.image_label.setMinimumSize(640, 480)  # 调整为竖屏尺寸
         
         # 主布局（只包含图像显示）
         main_layout = QtWidgets.QVBoxLayout()
