@@ -212,7 +212,7 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
         self.enable_controller_debug = False  # 关闭控制器调试日志
     
     def run(self):
-        """线程运行函数 - 集成检测处理"""
+        """线程运行函数 - 集成检测处理（ARM性能优化版）"""
         try:
             # 尝试不同后端打开摄像头
             backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
@@ -234,13 +234,13 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                 self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
                 self.cap.set(cv2.CAP_PROP_FPS, self.fps)
             except Exception as e:
-                # 继续使用默认参数
                 pass
             
             self.running = True
             
-            # 计算帧间隔时间（毫秒）
-            frame_interval = 1000 // self.fps if self.fps > 0 else 33
+            # ARM设备检测帧率降低到10fps，避免CPU饱和
+            detection_fps = min(self.fps, 10)
+            frame_interval_ms = 1000 // detection_fps
             
             while self.running:
                 start_time = time.time()
@@ -249,58 +249,47 @@ class EmbeddedMediaPipeCameraThread(CameraThread):
                 if ret:
                     self.frame_counter += 1
                     
-                    # 统一处理翻转和镜像操作（所有路径都执行）
-                    # 注意：基础控制器已经进行了正确的翻转处理，这里不需要额外镜像
-                    frame_mirrored = frame  # 直接使用原始帧
+                    # 统一处理翻转和镜像操作
+                    frame_mirrored = frame
                     
                     # 处理帧的显示
                     display_frame = None
                     
                     if self.analysis_enabled:
-                        # 人脸检测模式：使用嵌入式检测器处理帧
+                        # 人脸检测模式：process_frame内部做BGR→RGB
                         try:
                             results, display_frame = self.detector.process_frame(frame_mirrored, self.frame_counter)
-                            # 注意：process_frame已经包含了绘制，无需再次调用draw_results
-                            
                         except Exception as e:
-                            display_frame = frame_mirrored  # 检测失败时使用原始帧
+                            display_frame = frame_mirrored
                     elif self.gesture_controller:
-                        # 手势检测模式：使用手势控制器处理帧
+                        # 手势检测模式
                         try:
                             gesture_results = self.gesture_controller.process_frame(frame_mirrored)
                             if gesture_results:
                                 display_frame = gesture_results.get('display_frame', frame_mirrored)
-                                
-                                # 显示手势检测统计信息
-                                stable_gesture = gesture_results.get('stable_gesture')
                                 hands_count = gesture_results.get('hands_count', 0)
-                                fps = gesture_results.get('fps', 0)
-                                
-                                # 只在检测到手部时显示手势信息
-                                if hands_count > 0:
-                                    # 显示基本统计信息
-                                    print(f"手部数量: {hands_count}, FPS: {fps:.1f}")
-                                    
-                                # 稳定手势会在gesture_controller内部打印
-                                    
+                                # 移除热路径print，仅在debug模式下输出
                             else:
                                 display_frame = frame_mirrored
                         except Exception as e:
-                            display_frame = frame_mirrored  # 检测失败时使用原始帧
+                            display_frame = frame_mirrored
                     else:
-                        # 未启用检测时直接使用翻转镜像后的帧
                         display_frame = frame_mirrored
                     
-                    # 不再进行旋转处理，直接显示原始画面
-                    
-                    # 转换为RGB格式用于显示
+                    # 转换为RGB格式用于Qt显示（仅一次cvtColor）
                     frame_rgb = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
-                    self.frame_processed.emit(frame_rgb)
+                    # 拷贝数据避免QImage持有悬空指针
+                    frame_copy = frame_rgb.copy()
+                    self.frame_processed.emit(frame_copy)
                 
-                # 控制帧率
-                elapsed = (time.time() - start_time) * 1000
-                if elapsed < frame_interval:
-                    self.msleep(int(frame_interval - elapsed))
+                # ARM设备强制最小帧间隔，防止循环满载运行
+                elapsed_ms = (time.time() - start_time) * 1000
+                remaining_ms = frame_interval_ms - elapsed_ms
+                if remaining_ms > 0:
+                    self.msleep(int(remaining_ms))
+                else:
+                    # 即使帧处理超时，也强制短暂休眠防止CPU 100%
+                    self.msleep(5)
                     
         except Exception as e:
             pass
@@ -806,19 +795,19 @@ class EmbeddedMediaPipeCameraController(CameraController):
         return False
 
     def _on_frame_received(self, frame: np.ndarray):
-        """处理接收到的帧 - 适配嵌入式MediaPipe控件"""
+        """处理接收到的帧 - 适配嵌入式MediaPipe控件（内存安全版）"""
         if self.camera_widget and hasattr(self.camera_widget, 'update_image'):
-            # 使用嵌入式控件的update_image方法
             try:
-                # 转换为QImage格式
                 h, w, ch = frame.shape
                 bytes_per_line = ch * w
-                qimage = QtGui.QImage(frame.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
+                # 拷贝帧数据创建独立QImage，避免numpy buffer被释放后悬空指针
+                # 在ARM设备上尤为重要，防止内存访问违规导致段错误
+                frame_data = frame.tobytes()
+                qimage = QtGui.QImage(frame_data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
                 self.camera_widget.update_image(qimage)
             except Exception as e:
                 print(f"更新嵌入式控件图像时出错: {e}")
         elif self.camera_widget and hasattr(self.camera_widget, 'update_frame'):
-            # 备用：使用基类的update_frame方法
             self.camera_widget.update_frame(frame)
         
         # 调用回调函数（用于WebSocket发送等）

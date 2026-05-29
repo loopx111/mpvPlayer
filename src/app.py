@@ -5,6 +5,7 @@ import queue
 import time
 import signal
 import atexit
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional, Callable, List
 from PySide6 import QtWidgets, QtCore
 from .config.loader import load_config
@@ -16,6 +17,9 @@ from .player.mpv_controller import MpvController
 from .ui.main_window import MainWindow
 from .ai.gesture_controller import GestureController
 from .camera.embedded_mediapipe_controller import EmbeddedMediaPipeCameraController
+
+# 消息回调线程池：复用线程避免频繁创建销毁
+_MSG_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="msg-cb")
 
 
 class MessageBus:
@@ -30,7 +34,9 @@ class MessageBus:
     
     def subscribe(self, message_type: str, callback: Callable) -> None:
         """订阅消息"""
-        self._subscribers.setdefault(message_type, []).append(callback)
+        if message_type not in self._subscribers:
+            self._subscribers[message_type] = []
+        self._subscribers[message_type].append(callback)
     
     def publish(self, message_type: str, data: Any = None) -> None:
         """发布消息"""
@@ -46,15 +52,9 @@ class MessageBus:
                 message_type, data = self._message_queue.get(timeout=1)
                 callbacks = self._subscribers.get(message_type, [])
                 
-                # 在独立线程中执行回调，避免阻塞消息总线
+                # 使用线程池执行回调，避免每条消息创建多个线程
                 for callback in callbacks:
-                    def execute_callback():
-                        try:
-                            callback(data)
-                        except Exception as e:
-                            print(f"消息回调错误 {message_type}: {e}")
-                    
-                    threading.Thread(target=execute_callback, daemon=True).start()
+                    _MSG_EXECUTOR.submit(self._safe_callback, callback, message_type, data)
                 
                 self._message_queue.task_done()
             except queue.Empty:
@@ -62,6 +62,14 @@ class MessageBus:
             except Exception as e:
                 print(f"消息处理错误: {e}")
                 time.sleep(0.1)
+    
+    @staticmethod
+    def _safe_callback(callback: Callable, message_type: str, data: Any) -> None:
+        """安全执行回调"""
+        try:
+            callback(data)
+        except Exception as e:
+            print(f"消息回调错误 {message_type}: {e}")
     
     def cleanup(self) -> None:
         """清理资源"""
@@ -193,16 +201,16 @@ class ApplicationManager:
             
             def recover_mqtt() -> None:
                 if self.mqtt_service:
-                    self.log.info("尝试重新连接MQTT", "mqtt_recovery")
-                    self.mqtt_service.client.disconnect()
-                    time.sleep(2)
-                    self.mqtt_service.start(topics)
+                    self.log.info("触发MQTT强制重连", "mqtt_recovery")
+                    # 只触发断开，MqttClient 内部 while 循环会自动重连
+                    # 避免创建新线程，消除与内部重连的竞态条件
+                    self.mqtt_service.client.force_reconnect()
             
             self.health_check.register_component(
                 "mqtt", 
                 check_mqtt, 
                 recover_mqtt,
-                max_failures=2
+                max_failures=3  # 提高容错阈值，减少误触发
             )
         
         # 启动下载管理器
@@ -306,31 +314,6 @@ class ApplicationManager:
         except Exception as e:
             self.log.error(f"应用执行异常: {e}")
             self.cleanup()
-    
-    def _start_health_check(self) -> None:
-        """启动健康检查"""
-        def health_check():
-            while True:
-                time.sleep(30)  # 每30秒检查一次
-                
-                # 检查MQTT连接状态
-                if self.mqtt_service and self.cfg.mqtt.enabled:
-                    mqtt_healthy = self.mqtt_service.client.connected
-                    self.message_bus.publish("component.status", {
-                        "component": "mqtt", 
-                        "status": mqtt_healthy
-                    })
-                
-                # 检查播放器状态
-                if self.player:
-                    player_healthy = self.player.current_process is not None or len(self.player.queue) == 0
-                    self.message_bus.publish("component.status", {
-                        "component": "player", 
-                        "status": player_healthy
-                    })
-        
-        health_thread = threading.Thread(target=health_check, daemon=True)
-        health_thread.start()
     
     def _start_detection_module(self) -> None:
         """启动检测模块（根据模式选择）"""

@@ -316,6 +316,16 @@ class MpvController:
             
         return False
 
+    @staticmethod
+    def _cleanup_ipc_socket() -> None:
+        """清理残留的 mpv IPC socket 文件"""
+        socket_path = Path("/tmp/mpv-socket")
+        if socket_path.exists():
+            try:
+                socket_path.unlink()
+            except OSError:
+                pass
+
     # 删除远程环境检测功能，因为远程播放已无问题
 
     def _play_internal(self, file: Path) -> None:
@@ -331,6 +341,9 @@ class MpvController:
         
         # 停止当前播放
         self._stop_current_playback()
+        
+        # 清理残留的 IPC socket，防止 "Could not bind IPC socket"
+        self._cleanup_ipc_socket()
         
         # 构建 mpv 命令
         cmd = [self.mpv_exe]
@@ -388,24 +401,38 @@ class MpvController:
                 self.log.error("第二次启动 MPV 失败: %s", str(e2))
     
     def _build_playlist_command(self) -> List[str]:
-        """构建播放列表模式的mpv命令（优化版本）"""
+        """构建播放列表模式的mpv命令（飞腾E2000 OMX硬解优化版）
+        
+        飞腾E2000搭载Imagination GPU，ffmpeg内置h264ftomx解码器自动调用OMX硬解。
+        视频输出回退到SDL（OpenGL软渲染），不强制指定--vo让它自然选择最优路径。
+        """
         cmd = [
             f"--playlist={self.playlist_file}",
             "--loop-playlist=inf",
             f"--volume={self.volume}",
-            "--keep-open=always",  # 改为always，即使播放完成也保持窗口
+            "--keep-open=always",
             "--fullscreen",
             "--cursor-autohide=3000",
             "--input-default-bindings=yes",
-            "--idle",  # 允许在空闲时保持运行
-            "--force-window=yes"  # 强制创建窗口，即使没有视频
+            "--idle",
+            "--force-window=yes",
         ]
+        
+        # 限制软解线程数：OMX硬解只处理H.264，HEVC等回退软解时避免线程爆炸
+        cmd.append("--vd-lavc-threads=1")
+        # 音频时钟驱动同步 + 渲染跟不上时丢帧
+        cmd.append("--video-sync=audio")
+        cmd.append("--framedrop=vo")
+        # 小量预读缓冲，减少IO抖动
+        cmd.append("--cache=yes")
+        cmd.append("--cache-secs=2")
+        # 不指定--vo：让mpv自动选择（飞腾上会回退SDL，流畅度正常）
+        # 不指定--hwdec：ffmpeg的h264ftomx自动检测OMX硬解
         
         # 添加IPC支持
         cmd.append("--input-ipc-server=/tmp/mpv-socket")
         
         # 添加字幕选项
-        # 根据操作系统选择合适的字幕文件路径
         if platform.system().lower() == "linux":
             subtitle_file = Path("/opt/mpvPlayer/data/sub.ass")
         else:
@@ -417,34 +444,36 @@ class MpvController:
                 "--sub-ass=yes",
                 "--sub-visibility=yes"
             ])
-        
-        # 注意：不再强制指定解码器和视频输出，mpv 会自动选择最佳配置
-        # 之前的 --hwdec=no --vd=lavc,h264 --vo=x11 参数会禁用硬件加速，导致卡顿
         
         return cmd
     
     def _build_single_file_command(self, file: Path, loop: bool = False) -> List[str]:
-        """构建单文件播放模式的mpv命令（优化版本）"""
+        """构建单文件播放模式的mpv命令（飞腾E2000 OMX硬解优化版）"""
         cmd = [
             file.as_posix(),
             f"--volume={self.volume}",
-            "--keep-open=always",  # 改为always，即使播放完成也保持窗口
+            "--keep-open=always",
             "--fullscreen",
             f"--cursor-autohide={3000}",
             "--input-default-bindings=yes",
-            "--idle",  # 允许在空闲时保持运行
-            "--force-window=yes"  # 强制创建窗口，即使没有视频
+            "--idle",
+            "--force-window=yes",
         ]
         
-        # 添加循环设置（根据参数决定）
         if loop:
             cmd.append("--loop-file=inf")
+        
+        # 同播放列表模式：限制软解线程 + 帧同步 + 预读缓冲
+        cmd.append("--vd-lavc-threads=1")
+        cmd.append("--video-sync=audio")
+        cmd.append("--framedrop=vo")
+        cmd.append("--cache=yes")
+        cmd.append("--cache-secs=2")
         
         # 添加IPC支持
         cmd.append("--input-ipc-server=/tmp/mpv-socket")
         
         # 添加字幕选项
-        # 根据操作系统选择合适的字幕文件路径
         if platform.system().lower() == "linux":
             subtitle_file = Path("/opt/mpvPlayer/data/sub.ass")
         else:
@@ -456,9 +485,6 @@ class MpvController:
                 "--sub-ass=yes",
                 "--sub-visibility=yes"
             ])
-        
-        # 注意：不再强制指定解码器和视频输出，mpv 会自动选择最佳配置
-        # 之前的 --hwdec=no --vd=lavc,h264 --vo=x11 参数会禁用硬件加速，导致卡顿
         
         return cmd
 

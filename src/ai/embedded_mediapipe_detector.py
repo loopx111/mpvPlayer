@@ -299,16 +299,13 @@ class EmbeddedMediaPipeDetector:
             """判断是否应该跳过当前帧 - 优化无人脸跳过逻辑"""
             self.skip_stats["total_frames"] += 1
             
-            # 根据当前人脸数量动态调整最大跳过帧数
             current_max_skip = self.get_max_skip_frames(face_count)
             
             if self.frame_skip_counter < current_max_skip:
-                # 根据人脸数量动态跳过帧
                 self.frame_skip_counter += 1
                 self.skip_stats["skipped_frames"] += 1
                 return True
             else:
-                # 达到最大跳过帧数，重置计数器并执行检测
                 self.frame_skip_counter = 0
                 self.skip_stats["detected_frames"] += 1
                 return False

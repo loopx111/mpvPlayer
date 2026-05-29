@@ -2,12 +2,16 @@ import json
 import time
 import threading
 import queue
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional, Union
 import paho.mqtt.client as mqtt
 from ..config.models import MqttConfig
 from ..utils.logger import get_logger
 
 MessageCallback = Callable[[str, str], None]
+
+# 回调线程池：复用线程避免频繁创建销毁，限制并发防止线程爆炸
+_CALLBACK_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="mqtt-cb")
 
 
 class MqttClient:
@@ -23,37 +27,43 @@ class MqttClient:
         self.callbacks: Dict[str, List[MessageCallback]] = {}
         self.connected = False
         self._lock = threading.Lock()
-        self._reconnect_attempts = 0
-        self._max_reconnect_attempts = 0  # 0表示无上限，持续重连直到成功
-        self._reconnect_delay_base = 1  # 初始重连延迟秒数
         self._message_queue = queue.Queue()  # 消息队列，用于重连时缓存消息
         self._running = True
-        self._network_thread = None
-        self._reconnect_thread = None
+        self._network_thread: Optional[threading.Thread] = None
         self.on_connect_success: Optional[Callable] = None  # 连接成功回调
 
     def connect(self) -> None:
-        """连接MQTT服务器，支持自动重连"""
+        """连接MQTT服务器，启动网络线程（自动重连由线程内部while循环处理）"""
         self._running = True
         self._start_network_thread()
 
     def disconnect(self) -> None:
-        """断开连接"""
+        """断开连接并停止（用于应用关闭）"""
         self._running = False
         try:
             self.client.disconnect()
-        except:
+        except Exception:
             pass
         if self._network_thread:
             self._network_thread.join(timeout=5)
-        if self._reconnect_thread:
-            self._reconnect_thread.join(timeout=5)
+
+    def force_reconnect(self) -> None:
+        """强制重连：断开当前连接，让内部while循环自动重建（供健康检查使用）"""
+        if not self._running:
+            return
+        try:
+            self.log.info("触发MQTT强制重连", "force_reconnect")
+            self.client.disconnect()
+            # disconnect() 会导致 loop_forever() 返回，
+            # 外层的 while self._running 会自动重新 connect() + loop_forever()
+        except Exception as e:
+            self.log.warning(f"强制重连时断开失败: {e}", "force_reconnect")
 
     def _start_network_thread(self) -> None:
-        """启动网络线程"""
+        """启动网络线程（单线程、单连接模式，避免线程泄露）"""
         if self._network_thread and self._network_thread.is_alive():
             return
-            
+
         def network_loop():
             while self._running:
                 try:
@@ -62,37 +72,16 @@ class MqttClient:
                     self.client.loop_forever()
                 except ConnectionRefusedError:
                     self.log.error("MQTT连接被拒绝，请检查MQTT服务器是否运行", "network_thread")
-                    time.sleep(5)  # 延长等待时间
+                except OSError as e:
+                    self.log.error(f"MQTT网络错误: {e}", "network_thread")
                 except Exception as e:
                     self.log.error("MQTT网络线程异常", "network_thread", e)
-                    if self._running:
-                        time.sleep(1)  # 短暂等待后重试
+                # loop_forever() 返回后（断连或异常），等待后自动重连
+                if self._running:
+                    time.sleep(5)
 
-        self._network_thread = threading.Thread(target=network_loop, daemon=True)
+        self._network_thread = threading.Thread(target=network_loop, daemon=True, name="mqtt-network")
         self._network_thread.start()
-
-    def _schedule_reconnect(self) -> None:
-        """调度重连"""
-        if not self._running:
-            return
-            
-        if self._reconnect_attempts >= self._max_reconnect_attempts:
-            self.log.error("MQTT重连尝试次数已达上限，停止重连", "reconnect")
-            return
-
-        delay = self._reconnect_delay_base * (2 ** self._reconnect_attempts)  # 指数退避
-        delay = min(delay, 60)  # 最大延迟60秒
-        
-        self.log.info(f"MQTT将在{delay}秒后尝试重连（第{self._reconnect_attempts + 1}次）", "reconnect")
-        
-        def delayed_reconnect():
-            time.sleep(delay)
-            if self._running and not self.connected:
-                self._start_network_thread()
-
-        self._reconnect_thread = threading.Thread(target=delayed_reconnect, daemon=True)
-        self._reconnect_thread.start()
-        self._reconnect_attempts += 1
 
     def subscribe(self, topic: str, cb: Optional[MessageCallback] = None) -> None:
         with self._lock:
@@ -151,7 +140,6 @@ class MqttClient:
         
         if rc == 0:
             self.connected = True
-            self._reconnect_attempts = 0  # 重置重连计数
             self.log.info(f"MQTT连接成功 - {self.cfg.host}:{self.cfg.port}", "connect")
             
             # 重新订阅所有主题
@@ -177,7 +165,6 @@ class MqttClient:
             self.connected = False
             error_msg = rc_messages.get(rc, f"未知错误代码: {rc}")
             self.log.error(f"MQTT连接失败 - {error_msg} (rc={rc})", "connect")
-            self._schedule_reconnect()
 
     def _on_message(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
         payload = msg.payload.decode("utf-8", errors="ignore")
@@ -186,7 +173,10 @@ class MqttClient:
         with self._lock:
             cbs = list(self.callbacks.get(topic, []))
         
-        # 在独立线程中处理消息回调，避免阻塞MQTT网络线程
+        if not cbs:
+            return
+        
+        # 使用线程池执行回调，避免每条消息创建新线程
         def handle_callbacks():
             for cb in cbs:
                 try:
@@ -194,14 +184,12 @@ class MqttClient:
                 except Exception as exc:
                     self.log.error("消息回调错误", "callback", exc)
         
-        callback_thread = threading.Thread(target=handle_callbacks, daemon=True)
-        callback_thread.start()
+        _CALLBACK_EXECUTOR.submit(handle_callbacks)
 
     def _on_disconnect(self, client: mqtt.Client, userdata, rc):
         self.connected = False
         if rc == 0:
             self.log.info("MQTT正常断开连接", "disconnect")
         else:
-            self.log.warning(f"MQTT意外断开连接 rc={rc}", "disconnect")
-            if self._running:
-                self._schedule_reconnect()
+            self.log.warning(f"MQTT意外断开连接 rc={rc}，等待网络线程自动重连", "disconnect")
+        # 不手动调度重连：network_loop 中的 while self._running 会自动调用 connect()
